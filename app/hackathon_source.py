@@ -31,6 +31,17 @@ class HackathonSource:
             
             self.df.columns = self.df.columns.str.strip()
             
+            mask = self.df['Hackathon name'].apply(lambda x: not isinstance(x, str) or (isinstance(x, str) and not x.strip()))
+            if mask.any():
+                dropped_count = mask.sum()
+                print(f"Dropping {dropped_count} rows with non-string or empty hackathon names")
+                self.df = self.df[~mask]
+            
+            text_columns = ['Hackathon name', 'Organization name', 'Hackathon url', 'In person vs virtual']
+            for col in text_columns:
+                if col in self.df.columns:
+                    self.df[col] = self.df[col].astype('string').str.strip()
+            
             self.df['Hackathon published date'] = pd.to_datetime(
                 self.df['Hackathon published date'], 
                 errors='coerce',
@@ -150,7 +161,11 @@ class HackathonSource:
         """Get list of all hackathon names."""
         if self.df is None:
             return []
-        return sorted(self.df['Hackathon name'].dropna().unique().tolist())
+        
+        names = self.df['Hackathon name'].dropna()
+        names = names[names.apply(lambda x: isinstance(x, str))]
+        names = [n.strip() for n in names if n.strip()]
+        return sorted(set(names), key=str.casefold)
     
     def validate_hackathon_data(self, hackathon_name: str, 
                                 submission_count: int = None,
@@ -352,6 +367,9 @@ class HackathonSource:
             'Submissions',
             'Event Type'
         ]
+        
+        timeline['Hackathon'] = timeline['Hackathon'].astype('string')
+        timeline['Event Type'] = timeline['Event Type'].astype('string')
         
         return timeline
     
