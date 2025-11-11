@@ -1,12 +1,15 @@
 import streamlit as st
 import pandas as pd
 from app.database import Database
+from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="History - Hackathon Analysis",
     page_icon="📜",
     layout="wide"
 )
+
+inject_global_css()
 
 st.title("📜 Processing History")
 st.markdown("---")
@@ -132,7 +135,7 @@ if not job_history.empty and 'file_type' in job_history.columns:
     
     if not type_stats.empty:
         pivot_stats = type_stats.pivot(index='file_type', columns='status', values='count').fillna(0)
-        st.dataframe(pivot_stats, use_container_width=True)
+        st.dataframe(pivot_stats, width='stretch')
 
 st.markdown("---")
 
@@ -143,7 +146,7 @@ if not job_history.empty:
     
     st.dataframe(
         recent_jobs[['file_name', 'file_type', 'status', 'row_count', 'created_at']],
-        use_container_width=True,
+        width='stretch',
         hide_index=True
     )
 

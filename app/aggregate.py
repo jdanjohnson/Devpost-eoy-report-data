@@ -26,7 +26,7 @@ class DataAggregator:
             return pd.read_parquet(self.registrants_file)
         return None
     
-    def get_top_technologies(self, limit: int = 50) -> pd.DataFrame:
+    def get_top_technologies(self, limit: Optional[int] = 50) -> pd.DataFrame:
         df = self._get_submissions_df()
         
         if df is None or 'Built With' not in df.columns:
@@ -44,7 +44,7 @@ class DataAggregator:
         
         total_count = sum(tech_counter.values())
         
-        top_techs = tech_counter.most_common(limit)
+        top_techs = tech_counter.most_common() if limit is None else tech_counter.most_common(limit)
         
         result_df = pd.DataFrame([
             {
@@ -58,7 +58,7 @@ class DataAggregator:
         
         return result_df
     
-    def get_top_skills(self, limit: int = 50) -> pd.DataFrame:
+    def get_top_skills(self, limit: Optional[int] = 50) -> pd.DataFrame:
         df = self._get_registrants_df()
         
         if df is None or 'Skills' not in df.columns:
@@ -76,7 +76,7 @@ class DataAggregator:
         
         total_count = sum(skill_counter.values())
         
-        top_skills = skill_counter.most_common(limit)
+        top_skills = skill_counter.most_common() if limit is None else skill_counter.most_common(limit)
         
         result_df = pd.DataFrame([
             {
@@ -122,43 +122,43 @@ class DataAggregator:
         result_df = pd.DataFrame({
             'Team Size': team_size_counts.index,
             'Count': team_size_counts.values,
-            'Percentage': round((team_size_counts.values / total * 100), 2) if total > 0 else 0
+            'Percentage': ((team_size_counts / total * 100).round(2).to_numpy()) if total > 0 else 0
         })
         
         return result_df
     
-    def get_country_distribution(self, limit: int = 50) -> pd.DataFrame:
+    def get_country_distribution(self, limit: Optional[int] = 50) -> pd.DataFrame:
         df = self._get_registrants_df()
         
         if df is None or 'Country' not in df.columns:
             return pd.DataFrame(columns=['Country', 'Count', 'Percentage'])
         
-        country_counts = df['Country'].value_counts().head(limit)
+        country_counts = df['Country'].value_counts() if limit is None else df['Country'].value_counts().head(limit)
         
         total = df['Country'].count()
         
         result_df = pd.DataFrame({
             'Country': country_counts.index,
             'Count': country_counts.values,
-            'Percentage': round((country_counts.values / total * 100), 2) if total > 0 else 0
+            'Percentage': ((country_counts / total * 100).round(2).to_numpy()) if total > 0 else 0
         })
         
         return result_df
     
-    def get_occupation_breakdown(self, limit: int = 50) -> pd.DataFrame:
+    def get_occupation_breakdown(self, limit: Optional[int] = 50) -> pd.DataFrame:
         df = self._get_registrants_df()
         
         if df is None or 'Occupation' not in df.columns:
             return pd.DataFrame(columns=['Occupation', 'Count', 'Percentage'])
         
-        occupation_counts = df['Occupation'].value_counts().head(limit)
+        occupation_counts = df['Occupation'].value_counts() if limit is None else df['Occupation'].value_counts().head(limit)
         
         total = df['Occupation'].count()
         
         result_df = pd.DataFrame({
             'Occupation': occupation_counts.index,
             'Count': occupation_counts.values,
-            'Percentage': round((occupation_counts.values / total * 100), 2) if total > 0 else 0
+            'Percentage': ((occupation_counts / total * 100).round(2).to_numpy()) if total > 0 else 0
         })
         
         return result_df
@@ -176,7 +176,7 @@ class DataAggregator:
         result_df = pd.DataFrame({
             'Specialty': specialty_counts.index,
             'Count': specialty_counts.values,
-            'Percentage': round((specialty_counts.values / total * 100), 2) if total > 0 else 0
+            'Percentage': ((specialty_counts / total * 100).round(2).to_numpy()) if total > 0 else 0
         })
         
         return result_df
@@ -203,7 +203,7 @@ class DataAggregator:
         result_df = pd.DataFrame({
             'Experience Range': exp_counts.index,
             'Count': exp_counts.values,
-            'Percentage': round((exp_counts.values / total * 100), 2) if total > 0 else 0
+            'Percentage': ((exp_counts / total * 100).round(2).to_numpy()) if total > 0 else 0
         })
         
         return result_df

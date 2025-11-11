@@ -147,12 +147,14 @@ class DataIngestor:
             
             df = self.normalize_headers(df)
             
-            file_type = self.detect_file_type(df)
+            file_name = os.path.basename(file_path)
+            file_type = self.detect_file_type(df, file_name)
             
             if file_type == 'unknown':
-                return {'status': 'failed', 'error': 'Unknown file type'}
+                columns_found = ', '.join(df.columns.tolist())
+                return {'status': 'failed', 'error': f'Unknown file type. Columns found: {columns_found}'}
             
-            job_id = self.db.log_job_start(file_hash, os.path.basename(file_path), file_type)
+            job_id = self.db.log_job_start(file_hash, file_name, file_type)
             
             try:
                 df = self.clean_data(df, file_type)
@@ -200,8 +202,8 @@ class DataIngestor:
         
         return df
     
-    def detect_file_type(self, df: pd.DataFrame) -> str:
-        columns = [col.lower() for col in df.columns]
+    def detect_file_type(self, df: pd.DataFrame, file_name: str = '') -> str:
+        columns = [clean_string(str(col)).lower() for col in df.columns]
         
         submission_indicators = [
             'organization name',
@@ -221,15 +223,30 @@ class DataIngestor:
             'specialty'
         ]
         
-        submission_score = sum(1 for indicator in submission_indicators if indicator in columns)
-        registrant_score = sum(1 for indicator in registrant_indicators if indicator in columns)
+        submission_indicators_normalized = [clean_string(s).lower() for s in submission_indicators]
+        registrant_indicators_normalized = [clean_string(s).lower() for s in registrant_indicators]
         
-        if submission_score >= 3:
+        submission_score = sum(1 for indicator in submission_indicators_normalized if indicator in columns)
+        registrant_score = sum(1 for indicator in registrant_indicators_normalized if indicator in columns)
+        
+        if submission_score >= 3 and submission_score >= registrant_score:
             return 'submission'
-        elif registrant_score >= 4:
+        elif registrant_score >= 3:
             return 'registrant'
-        else:
-            return 'unknown'
+        
+        if 'submission url' in columns:
+            return 'submission'
+        elif 'user id' in columns:
+            return 'registrant'
+        
+        if file_name:
+            file_name_lower = file_name.lower()
+            if 'registrant' in file_name_lower:
+                return 'registrant'
+            elif 'submission' in file_name_lower:
+                return 'submission'
+        
+        return 'unknown'
     
     def clean_data(self, df: pd.DataFrame, file_type: str) -> pd.DataFrame:
         for col in df.columns:

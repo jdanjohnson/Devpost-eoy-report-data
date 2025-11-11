@@ -3,12 +3,15 @@ import os
 import tempfile
 from app.database import Database
 from app.ingest import DataIngestor
+from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Upload Files - Hackathon Analysis",
     page_icon="📤",
     layout="wide"
 )
+
+inject_global_css()
 
 st.title("📤 Upload & Process Files")
 st.markdown("---")
