@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import pandas as pd
 from datetime import datetime
 from app.aggregate import DataAggregator
 from app.export import ExcelExporter
@@ -25,12 +26,153 @@ if not aggregator.data_exists():
     st.stop()
 
 st.markdown("""
-Generate Excel reports for submission data and registrant data separately, or generate a combined report with all aggregated data.
+Export your data in multiple formats:
+- **Raw Data Exports** - Full consolidated datasets for BigQuery (CSV, XLSX, or Parquet)
+- **Aggregated Reports** - Excel reports with statistics and analysis
 """)
 
 st.markdown("---")
 
-st.subheader("📊 Generate Reports")
+st.subheader("📦 Raw Data Exports (for BigQuery)")
+st.markdown("Export consolidated raw data files containing all records. Perfect for loading into BigQuery or other data warehouses.")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("#### 📤 Submissions Data")
+    
+    submission_format = st.selectbox(
+        "Export Format:",
+        ["CSV", "XLSX", "Parquet"],
+        key="submission_format"
+    )
+    
+    if st.button("📥 Export All Submissions", type="primary", key="export_submissions"):
+        with st.spinner(f"Exporting submissions to {submission_format}..."):
+            try:
+                submission_file = './data/submissions/data.parquet'
+                
+                if not os.path.exists(submission_file):
+                    st.error("❌ No submission data available")
+                else:
+                    df = pd.read_parquet(submission_file)
+                    
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    if submission_format == "CSV":
+                        output_filename = f"submissions_consolidated_{timestamp}.csv"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_csv(output_path, index=False)
+                        mime_type = "text/csv"
+                    elif submission_format == "XLSX":
+                        output_filename = f"submissions_consolidated_{timestamp}.xlsx"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_excel(output_path, index=False, engine='openpyxl')
+                        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    else:  # Parquet
+                        output_filename = f"submissions_consolidated_{timestamp}.parquet"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_parquet(output_path, index=False, engine='pyarrow')
+                        mime_type = "application/octet-stream"
+                    
+                    st.success(f"✅ Exported {len(df):,} submission records!")
+                    
+                    st.markdown(f"**File:** `{output_filename}`")
+                    st.markdown(f"**Records:** {len(df):,}")
+                    st.markdown(f"**Columns:** {len(df.columns)}")
+                    
+                    with open(output_path, 'rb') as f:
+                        file_data = f.read()
+                    
+                    st.download_button(
+                        label=f"⬇️ Download {submission_format}",
+                        data=file_data,
+                        file_name=output_filename,
+                        mime=mime_type,
+                        key="download_submissions_raw"
+                    )
+                    
+                    file_size = os.path.getsize(output_path) / 1024
+                    if file_size > 1024:
+                        st.info(f"📊 File size: {file_size/1024:.2f} MB")
+                    else:
+                        st.info(f"📊 File size: {file_size:.2f} KB")
+            
+            except Exception as e:
+                st.error(f"❌ Error exporting submissions: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
+
+with col2:
+    st.markdown("#### 👥 Registrants Data")
+    
+    registrant_format = st.selectbox(
+        "Export Format:",
+        ["CSV", "XLSX", "Parquet"],
+        key="registrant_format"
+    )
+    
+    if st.button("📥 Export All Registrants", type="primary", key="export_registrants"):
+        with st.spinner(f"Exporting registrants to {registrant_format}..."):
+            try:
+                registrant_file = './data/registrants/data.parquet'
+                
+                if not os.path.exists(registrant_file):
+                    st.error("❌ No registrant data available")
+                else:
+                    df = pd.read_parquet(registrant_file)
+                    
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    if registrant_format == "CSV":
+                        output_filename = f"registrants_consolidated_{timestamp}.csv"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_csv(output_path, index=False)
+                        mime_type = "text/csv"
+                    elif registrant_format == "XLSX":
+                        output_filename = f"registrants_consolidated_{timestamp}.xlsx"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_excel(output_path, index=False, engine='openpyxl')
+                        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    else:  # Parquet
+                        output_filename = f"registrants_consolidated_{timestamp}.parquet"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_parquet(output_path, index=False, engine='pyarrow')
+                        mime_type = "application/octet-stream"
+                    
+                    st.success(f"✅ Exported {len(df):,} registrant records!")
+                    
+                    st.markdown(f"**File:** `{output_filename}`")
+                    st.markdown(f"**Records:** {len(df):,}")
+                    st.markdown(f"**Columns:** {len(df.columns)}")
+                    
+                    with open(output_path, 'rb') as f:
+                        file_data = f.read()
+                    
+                    st.download_button(
+                        label=f"⬇️ Download {registrant_format}",
+                        data=file_data,
+                        file_name=output_filename,
+                        mime=mime_type,
+                        key="download_registrants_raw"
+                    )
+                    
+                    file_size = os.path.getsize(output_path) / 1024
+                    if file_size > 1024:
+                        st.info(f"📊 File size: {file_size/1024:.2f} MB")
+                    else:
+                        st.info(f"📊 File size: {file_size:.2f} KB")
+            
+            except Exception as e:
+                st.error(f"❌ Error exporting registrants: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
+
+st.markdown("---")
+
+st.subheader("📊 Aggregated Reports")
+
+st.markdown("Generate Excel reports with aggregated statistics and analysis.")
 
 col1, col2 = st.columns(2)
 
@@ -305,8 +447,31 @@ with st.expander("📅 Time Trends (Preview)"):
 
 st.markdown("---")
 
-with st.expander("ℹ️ About Excel Exports"):
+with st.expander("ℹ️ About Exports"):
     st.markdown("""
+    
+    **Purpose:** Export full consolidated datasets for loading into BigQuery or other data warehouses
+    
+    **Formats:**
+    - **CSV** - Universal format, easy to import into any system
+    - **XLSX** - Excel format, good for manual review
+    - **Parquet** - Columnar format, most efficient for BigQuery (recommended)
+    
+    **Files:**
+    - `submissions_consolidated_YYYYMMDD_HHMMSS.*` - All submission records
+    - `registrants_consolidated_YYYYMMDD_HHMMSS.*` - All registrant records
+    
+    **BigQuery Import:**
+    1. Export data in Parquet format (recommended) or CSV
+    2. Upload to Google Cloud Storage bucket
+    3. Create BigQuery table from GCS file
+    4. Query and analyze with SQL
+    
+    ---
+    
+    
+    **Purpose:** Pre-calculated statistics and analysis in Excel format
+    
     **Export Format:**
     - Multi-sheet Excel workbook (.xlsx)
     - Formatted headers with colors
