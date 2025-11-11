@@ -20,8 +20,13 @@ For cloud deployment with Google Cloud Run, see the [Cloud Deployment Guide](CLO
 - **Data Ingestion**: Upload ZIP files or process local folders containing Excel files
 - **Automatic Processing**: Header normalization, deduplication, and data cleaning
 - **Interactive Dashboard**: View aggregated data with 8+ interactive charts
+- **Hackathon Source of Truth**: Load hackathon metadata from Excel as authoritative source
+- **Per-Hackathon Filtering**: Filter submissions and registrants by specific hackathon with validation
+- **Per-Organizer Filtering**: Filter data by organizer with case-insensitive name matching
+- **Timeline Analysis**: View time trends, year-over-year comparisons, and seasonal patterns
+- **Data Validation**: Compare processed data against source participant/submission counts
 - **Job History**: Track processing jobs and view detailed logs
-- **Excel Export**: Generate comprehensive reports with multiple sheets
+- **Excel Export**: Generate comprehensive reports (submission, registrant, or combined)
 - **Technology & Skills Normalization**: Automatic mapping of synonyms (js → javascript, etc.)
 
 ## System Requirements
@@ -102,9 +107,29 @@ Once processing is complete, navigate to the **Dashboard** page to view:
 - Country and occupation breakdowns
 - Time trends
 
-### 4. Export Reports
+### 4. Filter by Hackathon or Organizer
 
-Navigate to the **Export** page to generate and download Excel workbooks with all aggregations.
+Navigate to the **Hackathon Filter** page to:
+- Filter data by specific hackathon with validation against source data
+- Filter data by organizer (handles case-insensitive matching like "MHacks" and "mhacks")
+- View data attribution showing where each piece of data comes from
+- Export filtered data to Excel
+
+### 5. Analyze Timeline Trends
+
+Navigate to the **Timeline Analysis** page to:
+- View hackathon activity over time (monthly, quarterly, yearly)
+- Compare year-over-year metrics with growth percentages
+- Identify seasonal patterns (which months are most popular)
+- Track organizer evolution over time
+- Filter hackathons by custom date ranges
+
+### 6. Export Reports
+
+Navigate to the **Export** page to generate and download Excel workbooks:
+- **Submission Report**: Technologies, hackathons, team sizes, time trends
+- **Registrant Report**: Skills, countries, occupations, work experience
+- **Combined Report**: All data together
 
 ## Project Structure
 
@@ -117,7 +142,10 @@ hackathon-analysis/
 │   ├── ingest.py            # Data ingestion and processing
 │   ├── aggregate.py         # Aggregation queries
 │   ├── visualize.py         # Chart generation
-│   └── export.py            # Excel export
+│   ├── export.py            # Excel export
+│   ├── hackathon_source.py  # Hackathon source of truth management
+│   ├── hackathon_filter.py  # Per-hackathon/organizer filtering
+│   └── ui.py                # UI utilities and CSS injection
 ├── data/
 │   ├── submissions/         # Processed submission data (Parquet)
 │   ├── registrants/         # Processed registrant data (Parquet)
@@ -130,7 +158,9 @@ hackathon-analysis/
 │   ├── 1_Upload.py          # Upload page
 │   ├── 2_Dashboard.py       # Dashboard page
 │   ├── 3_History.py         # History page
-│   └── 4_Export.py          # Export page
+│   ├── 4_Export.py          # Export page
+│   ├── 5_Hackathon_Filter.py # Hackathon/Organizer filtering
+│   └── 6_Timeline_Analysis.py # Timeline & trend analysis
 ├── streamlit_app.py         # Main application (home page)
 ├── requirements.txt         # Python dependencies
 ├── synonyms.json            # Technology/skills normalization
@@ -138,6 +168,29 @@ hackathon-analysis/
 ├── jobs.db                  # SQLite database (auto-created)
 └── README.md                # This file
 ```
+
+## Hackathon Source of Truth
+
+The tool uses a hackathon source of truth Excel file (`hackathons_source.xlsx`) that contains authoritative metadata for all hackathons. This file should be placed in the `./data/` directory.
+
+**Required Sheet:** `challenge_report_2022_10-2025-1`
+
+**Required Columns:**
+- Organization name
+- Hackathon name
+- Hackathon url
+- Hackathon published date
+- Total participant count
+- Total valid submissions (excluding spam)
+- In person vs virtual
+
+**Features:**
+- Validates processed data against source participant/submission counts
+- Handles organizer name variations (case-insensitive matching)
+- Provides date-based filtering and trend analysis
+- Shows clear data attribution
+
+**Note:** The source file is not included in the repository due to .gitignore. You must provide your own `hackathons_source.xlsx` file in the `./data/` directory for the filtering and timeline features to work.
 
 ## Data Specifications
 
@@ -195,13 +248,43 @@ Expected columns:
    - **Demographics**: Country, occupation, and specialty distributions
    - **Time Trends**: Submissions over time
 
+### Filtering by Hackathon
+
+1. Navigate to the **Hackathon Filter** page
+2. Select the "Filter by Hackathon" tab
+3. Choose a hackathon from the dropdown
+4. View source data, validation results, and data attribution
+5. (Optional) Export filtered data to Excel
+
+### Filtering by Organizer
+
+1. Navigate to the **Hackathon Filter** page
+2. Select the "Filter by Organizer" tab
+3. Choose an organizer from the dropdown
+4. View all hackathons by that organizer with aggregated metrics
+5. See name variations (e.g., "MHacks" and "mhacks" grouped together)
+6. (Optional) Export filtered data to Excel
+
+### Analyzing Timeline Trends
+
+1. Navigate to the **Timeline Analysis** page
+2. Explore different tabs:
+   - **Time Trends**: View activity by month, quarter, or year
+   - **Year-over-Year**: Compare metrics across years with growth rates
+   - **Seasonal Patterns**: Identify peak months for hackathons
+   - **Organizer Timeline**: Track specific organizer evolution
+   - **Date Range Filter**: Filter by custom date range
+
 ### Exporting Data
 
 1. Navigate to the **Export** page
-2. (Optional) Enter a custom filename
-3. Click "Generate Export"
-4. Click "Download Excel File" to download the report
-5. View export history and download previous exports
+2. Choose report type:
+   - **Submission Report**: Submission-related data only
+   - **Registrant Report**: Registrant-related data only
+   - **Combined Report**: All data together
+3. (Optional) Enter a custom filename
+4. Click the appropriate "Generate Report" button
+5. Click "Download" to download the report
 
 ### Viewing History
 
@@ -364,6 +447,16 @@ For issues, questions, or feature requests, please refer to the project document
 This project is proprietary software. All rights reserved.
 
 ## Changelog
+
+### Version 1.1 (November 11, 2025)
+- Added hackathon source of truth management
+- Added per-hackathon filtering with validation
+- Added per-organizer filtering with name normalization
+- Added timeline analysis with time trends, YoY comparison, seasonal patterns
+- Added date-based filtering and trend analysis
+- Added separate submission and registrant report generation
+- Enhanced data validation against source participant/submission counts
+- Added clear data attribution showing data sources
 
 ### Version 1.0 (November 10, 2025)
 - Initial release
