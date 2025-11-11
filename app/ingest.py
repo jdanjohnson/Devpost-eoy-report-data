@@ -41,18 +41,19 @@ class DataIngestor:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_extract_dir)
             
-            excel_files = []
+            data_files = []
             for root, dirs, files in os.walk(temp_extract_dir):
                 for file in files:
-                    if file.endswith('.xlsx') and not file.startswith('~'):
-                        excel_files.append(os.path.join(root, file))
+                    file_lower = file.lower()
+                    if (file_lower.endswith('.xlsx') or file_lower.endswith('.csv')) and not file.startswith('~') and '__MACOSX' not in root:
+                        data_files.append(os.path.join(root, file))
             
-            results['total_files'] = len(excel_files)
+            results['total_files'] = len(data_files)
             
-            for idx, file_path in enumerate(excel_files):
+            for idx, file_path in enumerate(data_files):
                 try:
                     if progress_callback:
-                        progress_callback(idx + 1, len(excel_files), os.path.basename(file_path))
+                        progress_callback(idx + 1, len(data_files), os.path.basename(file_path))
                     
                     file_result = self.process_single_file(file_path)
                     
@@ -95,18 +96,18 @@ class DataIngestor:
             })
             return results
         
-        excel_files = [
+        data_files = [
             os.path.join(folder_path, f) 
             for f in os.listdir(folder_path) 
-            if f.endswith('.xlsx') and not f.startswith('~')
+            if (f.lower().endswith('.xlsx') or f.lower().endswith('.csv')) and not f.startswith('~')
         ]
         
-        results['total_files'] = len(excel_files)
+        results['total_files'] = len(data_files)
         
-        for idx, file_path in enumerate(excel_files):
+        for idx, file_path in enumerate(data_files):
             try:
                 if progress_callback:
-                    progress_callback(idx + 1, len(excel_files), os.path.basename(file_path))
+                    progress_callback(idx + 1, len(data_files), os.path.basename(file_path))
                 
                 file_result = self.process_single_file(file_path)
                 
@@ -131,7 +132,11 @@ class DataIngestor:
         return results
     
     def process_single_file(self, file_path: str) -> Dict[str, Any]:
-        if not validate_excel_file(file_path):
+        file_ext = os.path.splitext(file_path)[1].lower()
+        if file_ext not in ['.xlsx', '.csv']:
+            return {'status': 'failed', 'error': 'Invalid file type (must be .xlsx or .csv)'}
+        
+        if file_ext == '.xlsx' and not validate_excel_file(file_path):
             return {'status': 'failed', 'error': 'Invalid Excel file'}
         
         file_hash = compute_file_hash(file_path)
@@ -140,7 +145,7 @@ class DataIngestor:
             return {'status': 'skipped', 'reason': 'Already processed'}
         
         try:
-            df = self.read_excel_file(file_path)
+            df = self.load_file(file_path)
             
             if df is None or df.empty:
                 return {'status': 'failed', 'error': 'Empty or unreadable file'}
@@ -178,12 +183,44 @@ class DataIngestor:
         except Exception as e:
             return {'status': 'failed', 'error': str(e)}
     
-    def read_excel_file(self, file_path: str) -> Optional[pd.DataFrame]:
+    def load_file(self, file_path: str) -> Optional[pd.DataFrame]:
+        """Load file (Excel or CSV) and return DataFrame."""
         try:
-            df = pd.read_excel(file_path, engine='openpyxl')
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            if file_ext == '.xlsx':
+                df = pd.read_excel(file_path, engine='openpyxl')
+            elif file_ext == '.csv':
+                try:
+                    df = pd.read_csv(
+                        file_path,
+                        dtype=str,
+                        encoding='utf-8-sig',
+                        keep_default_na=False,
+                        na_values=['', 'NA', 'NaN', 'None'],
+                        engine='python',
+                        sep=None
+                    )
+                except Exception:
+                    df = pd.read_csv(
+                        file_path,
+                        dtype=str,
+                        encoding='latin-1',
+                        keep_default_na=False,
+                        na_values=['', 'NA', 'NaN', 'None'],
+                        engine='python',
+                        sep=None
+                    )
+            else:
+                return None
+            
             return df
         except Exception as e:
             return None
+    
+    def read_excel_file(self, file_path: str) -> Optional[pd.DataFrame]:
+        """Deprecated: Use load_file() instead. Kept for backward compatibility."""
+        return self.load_file(file_path)
     
     def normalize_headers(self, df: pd.DataFrame) -> pd.DataFrame:
         has_malformed_headers = False

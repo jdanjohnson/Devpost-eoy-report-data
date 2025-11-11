@@ -21,7 +21,7 @@ ingestor = DataIngestor(db)
 
 st.markdown("""
 Upload your hackathon data files for processing. You can either:
-- Upload a ZIP file containing multiple Excel files
+- Upload a ZIP file containing multiple Excel (.xlsx) or CSV (.csv) files
 - Process files from a local folder
 """)
 
@@ -39,7 +39,7 @@ if upload_method == "ZIP File Upload":
     st.subheader("📦 ZIP File Upload")
     
     uploaded_file = st.file_uploader(
-        "Choose a ZIP file containing Excel files",
+        "Choose a ZIP file containing Excel (.xlsx) or CSV (.csv) files",
         type=['zip'],
         help="Maximum file size: 1GB"
     )
@@ -110,7 +110,7 @@ else:
     st.subheader("📁 Local Folder Processing")
     
     st.markdown("""
-    Process Excel files from local folders. The tool will look for files in:
+    Process Excel (.xlsx) or CSV (.csv) files from local folders. The tool will look for files in:
     - `./incoming/submissions/` - for submission data files
     - `./incoming/registrants/` - for registrant data files
     """)
@@ -128,16 +128,16 @@ else:
         os.makedirs(folder_path, exist_ok=True)
         st.success(f"✅ Folder created: {folder_path}")
     
-    excel_files = [
+    data_files = [
         f for f in os.listdir(folder_path) 
-        if f.endswith('.xlsx') and not f.startswith('~')
+        if (f.lower().endswith('.xlsx') or f.lower().endswith('.csv')) and not f.startswith('~')
     ] if os.path.exists(folder_path) else []
     
-    if excel_files:
-        st.success(f"✅ Found {len(excel_files)} Excel file(s) in {folder_path}")
+    if data_files:
+        st.success(f"✅ Found {len(data_files)} data file(s) in {folder_path}")
         
         with st.expander("View Files"):
-            for idx, filename in enumerate(excel_files, 1):
+            for idx, filename in enumerate(data_files, 1):
                 file_path = os.path.join(folder_path, filename)
                 file_size = os.path.getsize(file_path) / (1024 * 1024)
                 st.text(f"{idx}. {filename} ({file_size:.2f} MB)")
@@ -194,8 +194,8 @@ else:
                 st.error(f"❌ Error processing folder: {str(e)}")
     
     else:
-        st.info(f"📂 No Excel files found in {folder_path}")
-        st.markdown(f"Please add Excel files to the folder and refresh this page.")
+        st.info(f"📂 No data files found in {folder_path}")
+        st.markdown(f"Please add Excel (.xlsx) or CSV (.csv) files to the folder and refresh this page.")
 
 st.markdown("---")
 
@@ -229,6 +229,8 @@ st.markdown("---")
 
 with st.expander("ℹ️ File Format Requirements"):
     st.markdown("""
+    **Supported File Types**: Excel (.xlsx) and CSV (.csv)
+    
     **Submission Files** should contain:
     - Organization Name
     - Challenge Title
@@ -250,4 +252,5 @@ with st.expander("ℹ️ File Format Requirements"):
     - Specialty (Student / Professional / Post Grad)
     
     **Note**: Headers may be in the first data row. The tool will automatically normalize them.
+    CSV files will be automatically detected with UTF-8 or Latin-1 encoding.
     """)
