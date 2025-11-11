@@ -1,0 +1,187 @@
+import streamlit as st
+import pandas as pd
+from app.database import Database
+
+st.set_page_config(
+    page_title="History - Hackathon Analysis",
+    page_icon="📜",
+    layout="wide"
+)
+
+st.title("📜 Processing History")
+st.markdown("---")
+
+db = Database()
+
+st.markdown("""
+View the history of all file processing jobs, including their status, row counts, and any errors encountered.
+""")
+
+st.markdown("---")
+
+job_history = db.get_job_history()
+
+if job_history.empty:
+    st.info("📭 No processing jobs found. Upload and process files to see history here.")
+    st.stop()
+
+st.subheader("🗄️ Job Statistics")
+
+stats = db.get_summary_stats()
+
+col1, col2, col3, col4, col5 = st.columns(5)
+
+with col1:
+    st.metric("Total Jobs", stats['total_jobs'])
+
+with col2:
+    st.metric("Completed", stats['completed_jobs'])
+
+with col3:
+    st.metric("Failed", stats['failed_jobs'])
+
+with col4:
+    st.metric("Processing", stats['processing_jobs'])
+
+with col5:
+    st.metric("Total Rows", f"{stats['total_rows']:,}")
+
+st.markdown("---")
+
+st.subheader("🔍 Filter Jobs")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    status_filter = st.multiselect(
+        "Filter by Status:",
+        options=['completed', 'failed', 'processing'],
+        default=['completed', 'failed', 'processing']
+    )
+
+with col2:
+    file_type_filter = st.multiselect(
+        "Filter by File Type:",
+        options=job_history['file_type'].unique().tolist() if 'file_type' in job_history.columns else [],
+        default=job_history['file_type'].unique().tolist() if 'file_type' in job_history.columns else []
+    )
+
+with col3:
+    search_term = st.text_input("Search by Filename:", "")
+
+filtered_history = job_history.copy()
+
+if status_filter:
+    filtered_history = filtered_history[filtered_history['status'].isin(status_filter)]
+
+if file_type_filter:
+    filtered_history = filtered_history[filtered_history['file_type'].isin(file_type_filter)]
+
+if search_term:
+    filtered_history = filtered_history[
+        filtered_history['file_name'].str.contains(search_term, case=False, na=False)
+    ]
+
+st.markdown("---")
+
+st.subheader(f"📋 Job History ({len(filtered_history)} jobs)")
+
+if filtered_history.empty:
+    st.info("No jobs match the selected filters.")
+else:
+    for idx, row in filtered_history.iterrows():
+        with st.expander(
+            f"{'✅' if row['status'] == 'completed' else '❌' if row['status'] == 'failed' else '⏳'} "
+            f"{row['file_name']} - {row['status'].upper()}"
+        ):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"**Job ID:** {row['id']}")
+                st.markdown(f"**File Name:** {row['file_name']}")
+                st.markdown(f"**File Type:** {row['file_type']}")
+                st.markdown(f"**Status:** {row['status']}")
+                st.markdown(f"**Row Count:** {row['row_count']:,}")
+            
+            with col2:
+                st.markdown(f"**Created At:** {row['created_at']}")
+                st.markdown(f"**Completed At:** {row['completed_at'] if pd.notna(row['completed_at']) else 'N/A'}")
+                
+                if row['status'] == 'failed' and pd.notna(row['error_message']):
+                    st.error(f"**Error:** {row['error_message']}")
+            
+            col3, col4, col5 = st.columns([1, 1, 3])
+            
+            with col3:
+                if st.button(f"🗑️ Delete", key=f"delete_{row['id']}"):
+                    db.delete_job(row['id'])
+                    st.success("Job deleted!")
+                    st.rerun()
+            
+            with col4:
+                if row['status'] == 'failed':
+                    if st.button(f"🔄 Retry", key=f"retry_{row['id']}"):
+                        st.info("Retry functionality coming soon!")
+
+st.markdown("---")
+
+st.subheader("📊 Job Statistics by Type")
+
+if not job_history.empty and 'file_type' in job_history.columns:
+    type_stats = job_history.groupby(['file_type', 'status']).size().reset_index(name='count')
+    
+    if not type_stats.empty:
+        pivot_stats = type_stats.pivot(index='file_type', columns='status', values='count').fillna(0)
+        st.dataframe(pivot_stats, use_container_width=True)
+
+st.markdown("---")
+
+st.subheader("📈 Recent Activity")
+
+if not job_history.empty:
+    recent_jobs = job_history.head(10)
+    
+    st.dataframe(
+        recent_jobs[['file_name', 'file_type', 'status', 'row_count', 'created_at']],
+        use_container_width=True,
+        hide_index=True
+    )
+
+st.markdown("---")
+
+with st.expander("⚙️ Advanced Actions"):
+    st.warning("⚠️ These actions are irreversible!")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🗑️ Clear All Failed Jobs", type="secondary"):
+            failed_jobs = job_history[job_history['status'] == 'failed']
+            for job_id in failed_jobs['id']:
+                db.delete_job(job_id)
+            st.success(f"Deleted {len(failed_jobs)} failed jobs!")
+            st.rerun()
+    
+    with col2:
+        if st.button("🗑️ Clear All Completed Jobs", type="secondary"):
+            completed_jobs = job_history[job_history['status'] == 'completed']
+            for job_id in completed_jobs['id']:
+                db.delete_job(job_id)
+            st.success(f"Deleted {len(completed_jobs)} completed jobs!")
+            st.rerun()
+
+st.markdown("---")
+
+with st.expander("ℹ️ About Job History"):
+    st.markdown("""
+    **Job Status Meanings:**
+    - ✅ **Completed**: File was successfully processed and data was stored
+    - ❌ **Failed**: File processing encountered an error
+    - ⏳ **Processing**: File is currently being processed
+    
+    **Notes:**
+    - Jobs track individual file processing operations
+    - Duplicate files (based on file hash) are automatically skipped
+    - Failed jobs can be retried by re-uploading the file
+    - Deleting a job does not delete the processed data
+    """)
