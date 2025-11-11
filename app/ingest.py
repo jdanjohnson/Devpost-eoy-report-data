@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import zipfile
+import traceback
 from typing import Dict, Any, List, Optional, Tuple
 import tempfile
 import shutil
@@ -70,9 +71,10 @@ class DataIngestor:
                 
                 except Exception as e:
                     results['failed_files'] += 1
+                    error_details = f"{str(e)}\n{traceback.format_exc()}"
                     results['errors'].append({
                         'file': os.path.basename(file_path),
-                        'error': str(e)
+                        'error': error_details
                     })
         
         finally:
@@ -124,9 +126,10 @@ class DataIngestor:
             
             except Exception as e:
                 results['failed_files'] += 1
+                error_details = f"{str(e)}\n{traceback.format_exc()}"
                 results['errors'].append({
                     'file': os.path.basename(file_path),
-                    'error': str(e)
+                    'error': error_details
                 })
         
         return results
@@ -194,20 +197,14 @@ class DataIngestor:
                 try:
                     df = pd.read_csv(
                         file_path,
-                        dtype=str,
                         encoding='utf-8-sig',
-                        keep_default_na=False,
-                        na_values=['', 'NA', 'NaN', 'None'],
                         engine='python',
                         sep=None
                     )
                 except Exception:
                     df = pd.read_csv(
                         file_path,
-                        dtype=str,
                         encoding='latin-1',
-                        keep_default_na=False,
-                        na_values=['', 'NA', 'NaN', 'None'],
                         engine='python',
                         sep=None
                     )
@@ -235,7 +232,22 @@ class DataIngestor:
             df = df[1:].reset_index(drop=True)
             df.columns = new_headers
         
-        df.columns = [clean_string(str(col)) for col in df.columns]
+        cleaned_columns = []
+        for col in df.columns:
+            col_str = str(col).lstrip('\ufeff')
+            cleaned_columns.append(clean_string(col_str))
+        
+        seen = {}
+        unique_columns = []
+        for col in cleaned_columns:
+            if col in seen:
+                seen[col] += 1
+                unique_columns.append(f"{col}.{seen[col]}")
+            else:
+                seen[col] = 0
+                unique_columns.append(col)
+        
+        df.columns = unique_columns
         
         return df
     
@@ -286,11 +298,20 @@ class DataIngestor:
         return 'unknown'
     
     def clean_data(self, df: pd.DataFrame, file_type: str) -> pd.DataFrame:
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = df[col].apply(clean_string)
+        object_cols = df.select_dtypes(include=['object']).columns
+        for col in object_cols:
+            df[col] = df[col].apply(clean_string)
         
-        if file_type == 'registrant':
+        if file_type == 'submission':
+            date_columns = ['Project Created At', 'Challenge Published At', 'Created At']
+            for col in date_columns:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors='coerce')
+            
+            if 'Additional Team Member Count' in df.columns:
+                df['Additional Team Member Count'] = pd.to_numeric(df['Additional Team Member Count'], errors='coerce')
+        
+        elif file_type == 'registrant':
             if 'Work Experience' in df.columns:
                 df['Work Experience'] = pd.to_numeric(df['Work Experience'], errors='coerce')
                 df.loc[df['Work Experience'] > self.max_work_experience, 'Work Experience'] = None
