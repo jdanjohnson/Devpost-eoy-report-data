@@ -2,9 +2,18 @@
 
 **Version:** 1.0  
 **Phase:** 1 of 3  
-**Date:** November 10, 2025
+**Date:** November 11, 2025
 
 A web-based tool that ingests Excel files containing hackathon participation data and generates aggregated analytics reports with interactive visualizations.
+
+## Deployment Options
+
+This tool can be deployed in two ways:
+
+- **[Local Deployment](#installation)** - Run on your local machine (instructions below)
+- **[Google Cloud Run Deployment](CLOUD_DEPLOYMENT.md)** - Deploy to Google Cloud for remote access
+
+For cloud deployment with Google Cloud Run, see the [Cloud Deployment Guide](CLOUD_DEPLOYMENT.md).
 
 ## Features
 
