@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from app.database import Database
+from app.ingest import DataIngestor
 from app.ui import inject_global_css
 
 st.set_page_config(
@@ -15,6 +16,7 @@ st.title("📜 Processing History")
 st.markdown("---")
 
 db = Database()
+ingestor = DataIngestor(db)
 
 st.markdown("""
 View the history of all file processing jobs, including their status, row counts, and any errors encountered.
@@ -87,6 +89,64 @@ if search_term:
 
 st.markdown("---")
 
+failed_in_filter = filtered_history[filtered_history['status'] == 'failed']
+if not failed_in_filter.empty:
+    col1, col2 = st.columns([1, 4])
+    
+    with col1:
+        if st.button("🔄 Retry All Failed", type="primary"):
+            st.session_state['retry_all'] = True
+            st.rerun()
+    
+    with col2:
+        st.info(f"💡 {len(failed_in_filter)} failed job(s) can be retried")
+
+if 'retry_all' in st.session_state and st.session_state['retry_all']:
+    st.markdown("### Retry All Failed Files")
+    
+    retry_progress_bar = st.progress(0)
+    retry_status_text = st.empty()
+    
+    def update_retry_progress(current, total, filename):
+        progress = current / total if total > 0 else 0
+        retry_progress_bar.progress(progress)
+        retry_status_text.text(f"Retrying file {current}/{total}: {filename}")
+    
+    with st.spinner("Retrying all failed files..."):
+        retry_results = ingestor.retry_failed_files(None, update_retry_progress)
+    
+    retry_progress_bar.progress(1.0)
+    retry_status_text.text("Retry complete!")
+    
+    st.success("✅ Retry completed!")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Retried", retry_results['total_files'])
+    
+    with col2:
+        st.metric("Processed", retry_results['processed_files'])
+    
+    with col3:
+        st.metric("Skipped", retry_results['skipped_files'])
+    
+    with col4:
+        st.metric("Failed", retry_results['failed_files'])
+    
+    if retry_results['errors']:
+        st.warning(f"⚠️ {len(retry_results['errors'])} file(s) still failed:")
+        with st.expander("View Retry Errors"):
+            for error in retry_results['errors']:
+                st.error(f"**{error['file']}**: {error['error']}")
+    
+    del st.session_state['retry_all']
+    
+    if st.button("🔄 Refresh History"):
+        st.rerun()
+
+st.markdown("---")
+
 st.subheader(f"📋 Job History ({len(filtered_history)} jobs)")
 
 if filtered_history.empty:
@@ -110,6 +170,9 @@ else:
                 st.markdown(f"**Created At:** {row['created_at']}")
                 st.markdown(f"**Completed At:** {row['completed_at'] if pd.notna(row['completed_at']) else 'N/A'}")
                 
+                if 'attempts' in row and pd.notna(row['attempts']) and row['attempts'] > 1:
+                    st.markdown(f"**Attempts:** {int(row['attempts'])}")
+                
                 if row['status'] == 'failed' and pd.notna(row['error_message']):
                     st.error(f"**Error:** {row['error_message']}")
             
@@ -124,7 +187,21 @@ else:
             with col4:
                 if row['status'] == 'failed':
                     if st.button(f"🔄 Retry", key=f"retry_{row['id']}"):
-                        st.info("Retry functionality coming soon!")
+                        job = db.get_job_by_id(row['id'])
+                        if job and job.get('file_hash'):
+                            with st.spinner(f"Retrying {row['file_name']}..."):
+                                retry_results = ingestor.retry_failed_files([job['file_hash']])
+                            
+                            if retry_results['processed_files'] > 0:
+                                st.success("✅ File processed successfully!")
+                                st.rerun()
+                            elif retry_results['failed_files'] > 0:
+                                if retry_results['errors']:
+                                    st.error(f"❌ Retry failed: {retry_results['errors'][0]['error']}")
+                            else:
+                                st.info("File was skipped (already processed)")
+                        else:
+                            st.error("Could not find job details for retry")
 
 st.markdown("---")
 

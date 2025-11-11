@@ -95,6 +95,45 @@ if upload_method == "ZIP File Upload":
                         with st.expander("View Errors"):
                             for error in results['errors']:
                                 st.error(f"**{error['file']}**: {error['error']}")
+                        
+                        if st.button("🔄 Retry Failed Files", key="retry_zip"):
+                            st.markdown("### Retry Status")
+                            
+                            retry_progress_bar = st.progress(0)
+                            retry_status_text = st.empty()
+                            
+                            def update_retry_progress(current, total, filename):
+                                progress = current / total if total > 0 else 0
+                                retry_progress_bar.progress(progress)
+                                retry_status_text.text(f"Retrying file {current}/{total}: {filename}")
+                            
+                            with st.spinner("Retrying failed files..."):
+                                retry_results = ingestor.retry_files_from_errors(results['errors'], update_retry_progress)
+                            
+                            retry_progress_bar.progress(1.0)
+                            retry_status_text.text("Retry complete!")
+                            
+                            st.success("✅ Retry completed!")
+                            
+                            col1, col2, col3, col4 = st.columns(4)
+                            
+                            with col1:
+                                st.metric("Total Retried", retry_results['total_files'])
+                            
+                            with col2:
+                                st.metric("Processed", retry_results['processed_files'])
+                            
+                            with col3:
+                                st.metric("Skipped", retry_results['skipped_files'])
+                            
+                            with col4:
+                                st.metric("Failed", retry_results['failed_files'])
+                            
+                            if retry_results['errors']:
+                                st.warning(f"⚠️ {len(retry_results['errors'])} file(s) still failed:")
+                                with st.expander("View Retry Errors"):
+                                    for error in retry_results['errors']:
+                                        st.error(f"**{error['file']}**: {error['error']}")
                     
                     st.markdown("---")
                     st.info("👉 Navigate to the **Dashboard** page to view your data!")
@@ -186,6 +225,45 @@ else:
                     with st.expander("View Errors"):
                         for error in results['errors']:
                             st.error(f"**{error['file']}**: {error['error']}")
+                    
+                    if st.button("🔄 Retry Failed Files", key="retry_folder"):
+                        st.markdown("### Retry Status")
+                        
+                        retry_progress_bar = st.progress(0)
+                        retry_status_text = st.empty()
+                        
+                        def update_retry_progress(current, total, filename):
+                            progress = current / total if total > 0 else 0
+                            retry_progress_bar.progress(progress)
+                            retry_status_text.text(f"Retrying file {current}/{total}: {filename}")
+                        
+                        with st.spinner("Retrying failed files..."):
+                            retry_results = ingestor.retry_files_from_errors(results['errors'], update_retry_progress)
+                        
+                        retry_progress_bar.progress(1.0)
+                        retry_status_text.text("Retry complete!")
+                        
+                        st.success("✅ Retry completed!")
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric("Total Retried", retry_results['total_files'])
+                        
+                        with col2:
+                            st.metric("Processed", retry_results['processed_files'])
+                        
+                        with col3:
+                            st.metric("Skipped", retry_results['skipped_files'])
+                        
+                        with col4:
+                            st.metric("Failed", retry_results['failed_files'])
+                        
+                        if retry_results['errors']:
+                            st.warning(f"⚠️ {len(retry_results['errors'])} file(s) still failed:")
+                            with st.expander("View Retry Errors"):
+                                for error in retry_results['errors']:
+                                    st.error(f"**{error['file']}**: {error['error']}")
                 
                 st.markdown("---")
                 st.info("👉 Navigate to the **Dashboard** page to view your data!")
