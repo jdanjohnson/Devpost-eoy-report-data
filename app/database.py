@@ -30,7 +30,9 @@ class Database:
                 row_count INTEGER DEFAULT 0,
                 error_message TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP
+                completed_at TIMESTAMP,
+                retry_path TEXT,
+                attempts INTEGER DEFAULT 1
             )
         """)
         
@@ -41,6 +43,16 @@ class Database:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_status ON jobs(status)
         """)
+        
+        try:
+            cursor.execute("ALTER TABLE jobs ADD COLUMN retry_path TEXT")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE jobs ADD COLUMN attempts INTEGER DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass
         
         conn.commit()
         conn.close()
@@ -73,24 +85,31 @@ class Database:
         
         return count > 0
     
-    def log_job_start(self, file_hash: str, file_name: str, file_type: str) -> int:
+    def log_job_start(self, file_hash: str, file_name: str, file_type: str, retry_path: str = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             cursor.execute("""
-                INSERT INTO jobs (file_hash, file_name, file_type, status)
-                VALUES (?, ?, ?, 'processing')
-            """, (file_hash, file_name, file_type))
+                INSERT INTO jobs (file_hash, file_name, file_type, status, retry_path, attempts)
+                VALUES (?, ?, ?, 'processing', ?, 1)
+            """, (file_hash, file_name, file_type, retry_path))
             
             job_id = cursor.lastrowid
             conn.commit()
         except sqlite3.IntegrityError:
             cursor.execute("""
-                UPDATE jobs 
-                SET status = 'processing', error_message = NULL
-                WHERE file_hash = ?
+                SELECT attempts FROM jobs WHERE file_hash = ?
             """, (file_hash,))
+            
+            result = cursor.fetchone()
+            attempts = (result[0] if result else 0) + 1
+            
+            cursor.execute("""
+                UPDATE jobs 
+                SET status = 'processing', error_message = NULL, attempts = ?, retry_path = ?
+                WHERE file_hash = ?
+            """, (attempts, retry_path, file_hash))
             
             cursor.execute("""
                 SELECT id FROM jobs WHERE file_hash = ?
@@ -144,7 +163,9 @@ class Database:
                 row_count,
                 error_message,
                 created_at,
-                completed_at
+                completed_at,
+                retry_path,
+                attempts
             FROM jobs
             ORDER BY created_at DESC
         """, conn)
@@ -168,7 +189,7 @@ class Database:
         cursor.execute("""
             SELECT 
                 id, file_hash, file_name, file_type, status, 
-                row_count, error_message, created_at, completed_at
+                row_count, error_message, created_at, completed_at, retry_path, attempts
             FROM jobs
             WHERE id = ?
         """, (job_id,))
@@ -186,7 +207,9 @@ class Database:
                 'row_count': row[5],
                 'error_message': row[6],
                 'created_at': row[7],
-                'completed_at': row[8]
+                'completed_at': row[8],
+                'retry_path': row[9],
+                'attempts': row[10]
             }
         return None
     
@@ -214,3 +237,33 @@ class Database:
             'processing_jobs': row[3] or 0,
             'total_rows': row[4] or 0
         }
+    
+    def get_failed_jobs(self) -> List[Dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                id, file_hash, file_name, file_type, status, 
+                row_count, error_message, created_at, completed_at, retry_path, attempts
+            FROM jobs
+            WHERE status = 'failed'
+            ORDER BY created_at DESC
+        """)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            'id': row[0],
+            'file_hash': row[1],
+            'file_name': row[2],
+            'file_type': row[3],
+            'status': row[4],
+            'row_count': row[5],
+            'error_message': row[6],
+            'created_at': row[7],
+            'completed_at': row[8],
+            'retry_path': row[9],
+            'attempts': row[10]
+        } for row in rows]

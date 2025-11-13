@@ -15,13 +15,12 @@ class ChartGenerator:
         x: str, 
         y: str, 
         title: str,
-        orientation: str = 'h',
-        limit: int = 20
+        orientation: str = 'h'
     ) -> go.Figure:
         if df.empty:
             return self._create_empty_chart(title)
         
-        plot_df = df.head(limit).copy()
+        plot_df = df.copy()
         
         if orientation == 'h':
             plot_df = plot_df.sort_values(y, ascending=True)
@@ -86,18 +85,12 @@ class ChartGenerator:
         df: pd.DataFrame, 
         values: str, 
         names: str, 
-        title: str,
-        limit: int = 10
+        title: str
     ) -> go.Figure:
         if df.empty:
             return self._create_empty_chart(title)
         
-        plot_df = df.head(limit).copy()
-        
-        if len(df) > limit:
-            other_count = df.iloc[limit:][values].sum()
-            other_row = pd.DataFrame({names: ['Other'], values: [other_count]})
-            plot_df = pd.concat([plot_df, other_row], ignore_index=True)
+        plot_df = df.copy()
         
         fig = go.Figure(data=[
             go.Pie(

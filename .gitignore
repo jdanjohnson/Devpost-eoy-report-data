@@ -16,7 +16,8 @@ build/
 .streamlit/secrets.toml
 
 # Data files
-data/
+data/*
+!data/hackathons_source.xlsx
 incoming/
 temp/
 *.parquet

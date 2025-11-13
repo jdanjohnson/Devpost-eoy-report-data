@@ -1,14 +1,18 @@
 import streamlit as st
 import os
+import pandas as pd
 from datetime import datetime
 from app.aggregate import DataAggregator
 from app.export import ExcelExporter
+from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Export - Hackathon Analysis",
     page_icon="📥",
     layout="wide"
 )
+
+inject_global_css()
 
 st.title("📥 Export Data")
 st.markdown("---")
@@ -22,47 +26,279 @@ if not aggregator.data_exists():
     st.stop()
 
 st.markdown("""
-Generate comprehensive Excel reports with all aggregated data, including:
-- Top 50 Technologies
-- Top 50 Skills
-- Submissions by Hackathon
-- Team Size Distribution
-- Country Distribution
-- Occupation Breakdown
-- Specialty Distribution
-- Work Experience Distribution
-- Time Trends
-- Summary Statistics
+Export your data in multiple formats:
+- **Raw Data Exports** - Full consolidated datasets for BigQuery (CSV, XLSX, or Parquet)
+- **Aggregated Reports** - Excel reports with statistics and analysis
 """)
 
 st.markdown("---")
 
-st.subheader("📊 Generate New Export")
+st.subheader("📦 Raw Data Exports (for BigQuery)")
+st.markdown("Export consolidated raw data files containing all records. Perfect for loading into BigQuery or other data warehouses.")
 
-col1, col2 = st.columns([2, 1])
+col1, col2 = st.columns(2)
 
 with col1:
-    custom_filename = st.text_input(
-        "Custom Filename (optional):",
-        placeholder="hackathon_aggregations_YYYYMMDD_HHMMSS.xlsx",
-        help="Leave empty to use default timestamp-based filename"
+    st.markdown("#### 📤 Submissions Data")
+    
+    submission_format = st.selectbox(
+        "Export Format:",
+        ["CSV", "XLSX", "Parquet"],
+        key="submission_format"
     )
+    
+    if st.button("📥 Export All Submissions", type="primary", key="export_submissions"):
+        with st.spinner(f"Exporting submissions to {submission_format}..."):
+            try:
+                submission_file = './data/submissions/data.parquet'
+                
+                if not os.path.exists(submission_file):
+                    st.error("❌ No submission data available")
+                else:
+                    df = pd.read_parquet(submission_file)
+                    
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    if submission_format == "CSV":
+                        output_filename = f"submissions_consolidated_{timestamp}.csv"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_csv(output_path, index=False)
+                        mime_type = "text/csv"
+                    elif submission_format == "XLSX":
+                        output_filename = f"submissions_consolidated_{timestamp}.xlsx"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_excel(output_path, index=False, engine='openpyxl')
+                        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    else:  # Parquet
+                        output_filename = f"submissions_consolidated_{timestamp}.parquet"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_parquet(output_path, index=False, engine='pyarrow')
+                        mime_type = "application/octet-stream"
+                    
+                    st.success(f"✅ Exported {len(df):,} submission records!")
+                    
+                    st.markdown(f"**File:** `{output_filename}`")
+                    st.markdown(f"**Records:** {len(df):,}")
+                    st.markdown(f"**Columns:** {len(df.columns)}")
+                    
+                    with open(output_path, 'rb') as f:
+                        file_data = f.read()
+                    
+                    st.download_button(
+                        label=f"⬇️ Download {submission_format}",
+                        data=file_data,
+                        file_name=output_filename,
+                        mime=mime_type,
+                        key="download_submissions_raw"
+                    )
+                    
+                    file_size = os.path.getsize(output_path) / 1024
+                    if file_size > 1024:
+                        st.info(f"📊 File size: {file_size/1024:.2f} MB")
+                    else:
+                        st.info(f"📊 File size: {file_size:.2f} KB")
+            
+            except Exception as e:
+                st.error(f"❌ Error exporting submissions: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
 
 with col2:
-    st.markdown("#### Export Format")
-    st.info("📄 Excel (.xlsx)")
+    st.markdown("#### 👥 Registrants Data")
+    
+    registrant_format = st.selectbox(
+        "Export Format:",
+        ["CSV", "XLSX", "Parquet"],
+        key="registrant_format"
+    )
+    
+    if st.button("📥 Export All Registrants", type="primary", key="export_registrants"):
+        with st.spinner(f"Exporting registrants to {registrant_format}..."):
+            try:
+                registrant_file = './data/registrants/data.parquet'
+                
+                if not os.path.exists(registrant_file):
+                    st.error("❌ No registrant data available")
+                else:
+                    df = pd.read_parquet(registrant_file)
+                    
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    if registrant_format == "CSV":
+                        output_filename = f"registrants_consolidated_{timestamp}.csv"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_csv(output_path, index=False)
+                        mime_type = "text/csv"
+                    elif registrant_format == "XLSX":
+                        output_filename = f"registrants_consolidated_{timestamp}.xlsx"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_excel(output_path, index=False, engine='openpyxl')
+                        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    else:  # Parquet
+                        output_filename = f"registrants_consolidated_{timestamp}.parquet"
+                        output_path = f"./data/processed/{output_filename}"
+                        df.to_parquet(output_path, index=False, engine='pyarrow')
+                        mime_type = "application/octet-stream"
+                    
+                    st.success(f"✅ Exported {len(df):,} registrant records!")
+                    
+                    st.markdown(f"**File:** `{output_filename}`")
+                    st.markdown(f"**Records:** {len(df):,}")
+                    st.markdown(f"**Columns:** {len(df.columns)}")
+                    
+                    with open(output_path, 'rb') as f:
+                        file_data = f.read()
+                    
+                    st.download_button(
+                        label=f"⬇️ Download {registrant_format}",
+                        data=file_data,
+                        file_name=output_filename,
+                        mime=mime_type,
+                        key="download_registrants_raw"
+                    )
+                    
+                    file_size = os.path.getsize(output_path) / 1024
+                    if file_size > 1024:
+                        st.info(f"📊 File size: {file_size/1024:.2f} MB")
+                    else:
+                        st.info(f"📊 File size: {file_size:.2f} KB")
+            
+            except Exception as e:
+                st.error(f"❌ Error exporting registrants: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
 
-if st.button("🚀 Generate Export", type="primary"):
-    with st.spinner("Generating Excel workbook..."):
+st.markdown("---")
+
+st.subheader("📊 Aggregated Reports")
+
+st.markdown("Generate Excel reports with aggregated statistics and analysis.")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("#### 📤 Submission Report")
+    st.markdown("""
+    **Includes:**
+    - All Technologies (full dataset)
+    - Submissions by Hackathon
+    - Team Size Distribution
+    - Time Trends
+    - Summary Statistics
+    """)
+    
+    submission_filename = st.text_input(
+        "Custom Filename (optional):",
+        placeholder="submission_report_YYYYMMDD_HHMMSS.xlsx",
+        help="Leave empty to use default timestamp-based filename",
+        key="submission_filename"
+    )
+    
+    if st.button("🚀 Generate Submission Report", type="primary", key="generate_submission"):
+        with st.spinner("Generating Submission Report..."):
+            try:
+                filename = submission_filename if submission_filename else None
+                
+                if filename and not filename.endswith('.xlsx'):
+                    filename += '.xlsx'
+                
+                output_path = exporter.generate_submission_report(filename)
+                
+                st.success(f"✅ Submission Report generated successfully!")
+                
+                st.markdown(f"**File:** `{os.path.basename(output_path)}`")
+                st.markdown(f"**Location:** `{output_path}`")
+                
+                with open(output_path, 'rb') as f:
+                    file_data = f.read()
+                
+                st.download_button(
+                    label="⬇️ Download Submission Report",
+                    data=file_data,
+                    file_name=os.path.basename(output_path),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_submission"
+                )
+                
+                file_size = os.path.getsize(output_path) / 1024
+                st.info(f"📊 File size: {file_size:.2f} KB")
+            
+            except Exception as e:
+                st.error(f"❌ Error generating submission report: {str(e)}")
+
+with col2:
+    st.markdown("#### 👥 Registrant Report")
+    st.markdown("""
+    **Includes:**
+    - All Skills (full dataset)
+    - All Countries (full dataset)
+    - All Occupations (full dataset)
+    - Specialty Distribution
+    - Work Experience Distribution
+    """)
+    
+    registrant_filename = st.text_input(
+        "Custom Filename (optional):",
+        placeholder="registrant_report_YYYYMMDD_HHMMSS.xlsx",
+        help="Leave empty to use default timestamp-based filename",
+        key="registrant_filename"
+    )
+    
+    if st.button("🚀 Generate Registrant Report", type="primary", key="generate_registrant"):
+        with st.spinner("Generating Registrant Report..."):
+            try:
+                filename = registrant_filename if registrant_filename else None
+                
+                if filename and not filename.endswith('.xlsx'):
+                    filename += '.xlsx'
+                
+                output_path = exporter.generate_registrant_report(filename)
+                
+                st.success(f"✅ Registrant Report generated successfully!")
+                
+                st.markdown(f"**File:** `{os.path.basename(output_path)}`")
+                st.markdown(f"**Location:** `{output_path}`")
+                
+                with open(output_path, 'rb') as f:
+                    file_data = f.read()
+                
+                st.download_button(
+                    label="⬇️ Download Registrant Report",
+                    data=file_data,
+                    file_name=os.path.basename(output_path),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_registrant"
+                )
+                
+                file_size = os.path.getsize(output_path) / 1024
+                st.info(f"📊 File size: {file_size:.2f} KB")
+            
+            except Exception as e:
+                st.error(f"❌ Error generating registrant report: {str(e)}")
+
+st.markdown("---")
+
+st.markdown("#### 📊 Combined Report (All Data)")
+st.markdown("Generate a comprehensive report with both submission and registrant data.")
+
+combined_filename = st.text_input(
+    "Custom Filename (optional):",
+    placeholder="hackathon_aggregations_YYYYMMDD_HHMMSS.xlsx",
+    help="Leave empty to use default timestamp-based filename",
+    key="combined_filename"
+)
+
+if st.button("🚀 Generate Combined Report", key="generate_combined"):
+    with st.spinner("Generating Combined Report..."):
         try:
-            filename = custom_filename if custom_filename else None
+            filename = combined_filename if combined_filename else None
             
             if filename and not filename.endswith('.xlsx'):
                 filename += '.xlsx'
             
             output_path = exporter.generate_excel_workbook(filename)
             
-            st.success(f"✅ Export generated successfully!")
+            st.success(f"✅ Combined Report generated successfully!")
             
             st.markdown(f"**File:** `{os.path.basename(output_path)}`")
             st.markdown(f"**Location:** `{output_path}`")
@@ -71,17 +307,18 @@ if st.button("🚀 Generate Export", type="primary"):
                 file_data = f.read()
             
             st.download_button(
-                label="⬇️ Download Excel File",
+                label="⬇️ Download Combined Report",
                 data=file_data,
                 file_name=os.path.basename(output_path),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_combined"
             )
             
             file_size = os.path.getsize(output_path) / 1024
             st.info(f"📊 File size: {file_size:.2f} KB")
         
         except Exception as e:
-            st.error(f"❌ Error generating export: {str(e)}")
+            st.error(f"❌ Error generating combined report: {str(e)}")
 
 st.markdown("---")
 
@@ -148,70 +385,93 @@ with st.expander("📊 Summary Statistics"):
 with st.expander("🔧 Top Technologies (Preview)"):
     tech_df = aggregator.get_top_technologies(limit=10)
     if not tech_df.empty:
-        st.dataframe(tech_df, use_container_width=True)
+        st.dataframe(tech_df, width='stretch')
     else:
         st.info("No data available")
 
 with st.expander("💡 Top Skills (Preview)"):
     skills_df = aggregator.get_top_skills(limit=10)
     if not skills_df.empty:
-        st.dataframe(skills_df, use_container_width=True)
+        st.dataframe(skills_df, width='stretch')
     else:
         st.info("No data available")
 
 with st.expander("🏆 Submissions by Hackathon (Preview)"):
     hackathon_df = aggregator.get_submissions_by_hackathon()
     if not hackathon_df.empty:
-        st.dataframe(hackathon_df.head(10), use_container_width=True)
+        st.dataframe(hackathon_df.head(10), width='stretch')
     else:
         st.info("No data available")
 
 with st.expander("👥 Team Size Distribution (Preview)"):
     team_size_df = aggregator.get_team_size_distribution()
     if not team_size_df.empty:
-        st.dataframe(team_size_df, use_container_width=True)
+        st.dataframe(team_size_df, width='stretch')
     else:
         st.info("No data available")
 
 with st.expander("🌍 Country Distribution (Preview)"):
     country_df = aggregator.get_country_distribution(limit=10)
     if not country_df.empty:
-        st.dataframe(country_df, use_container_width=True)
+        st.dataframe(country_df, width='stretch')
     else:
         st.info("No data available")
 
 with st.expander("💼 Occupation Breakdown (Preview)"):
     occupation_df = aggregator.get_occupation_breakdown(limit=10)
     if not occupation_df.empty:
-        st.dataframe(occupation_df, use_container_width=True)
+        st.dataframe(occupation_df, width='stretch')
     else:
         st.info("No data available")
 
 with st.expander("🎓 Specialty Distribution (Preview)"):
     specialty_df = aggregator.get_specialty_distribution()
     if not specialty_df.empty:
-        st.dataframe(specialty_df, use_container_width=True)
+        st.dataframe(specialty_df, width='stretch')
     else:
         st.info("No data available")
 
 with st.expander("💼 Work Experience Distribution (Preview)"):
     work_exp_df = aggregator.get_work_experience_distribution()
     if not work_exp_df.empty:
-        st.dataframe(work_exp_df, use_container_width=True)
+        st.dataframe(work_exp_df, width='stretch')
     else:
         st.info("No data available")
 
 with st.expander("📅 Time Trends (Preview)"):
     time_trends_df = aggregator.get_time_trends(period='weekly')
     if not time_trends_df.empty:
-        st.dataframe(time_trends_df.head(10), use_container_width=True)
+        st.dataframe(time_trends_df.head(10), width='stretch')
     else:
         st.info("No data available")
 
 st.markdown("---")
 
-with st.expander("ℹ️ About Excel Exports"):
+with st.expander("ℹ️ About Exports"):
     st.markdown("""
+    
+    **Purpose:** Export full consolidated datasets for loading into BigQuery or other data warehouses
+    
+    **Formats:**
+    - **CSV** - Universal format, easy to import into any system
+    - **XLSX** - Excel format, good for manual review
+    - **Parquet** - Columnar format, most efficient for BigQuery (recommended)
+    
+    **Files:**
+    - `submissions_consolidated_YYYYMMDD_HHMMSS.*` - All submission records
+    - `registrants_consolidated_YYYYMMDD_HHMMSS.*` - All registrant records
+    
+    **BigQuery Import:**
+    1. Export data in Parquet format (recommended) or CSV
+    2. Upload to Google Cloud Storage bucket
+    3. Create BigQuery table from GCS file
+    4. Query and analyze with SQL
+    
+    ---
+    
+    
+    **Purpose:** Pre-calculated statistics and analysis in Excel format
+    
     **Export Format:**
     - Multi-sheet Excel workbook (.xlsx)
     - Formatted headers with colors

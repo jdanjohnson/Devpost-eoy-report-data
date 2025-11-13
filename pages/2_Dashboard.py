@@ -1,12 +1,15 @@
 import streamlit as st
 from app.aggregate import DataAggregator
 from app.visualize import ChartGenerator
+from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Dashboard - Hackathon Analysis",
     page_icon="📊",
     layout="wide"
 )
+
+inject_global_css()
 
 st.title("📊 Analytics Dashboard")
 st.markdown("---")
@@ -90,20 +93,21 @@ with tab1:
     
     top_n_tech = st.slider("Number of technologies to display:", 10, 50, 20, key="tech_slider")
     
-    tech_df = aggregator.get_top_technologies(limit=top_n_tech)
+    tech_df_chart = aggregator.get_top_technologies(limit=top_n_tech)
     
-    if not tech_df.empty:
+    if not tech_df_chart.empty:
         fig_tech = chart_gen.create_bar_chart(
-            tech_df,
+            tech_df_chart,
             x='Technology',
             y='Count',
             title=f'Top {top_n_tech} Technologies',
             orientation='h'
         )
-        st.plotly_chart(fig_tech, use_container_width=True)
+        st.plotly_chart(fig_tech, width='stretch')
         
-        with st.expander("📋 View Data Table"):
-            st.dataframe(tech_df, use_container_width=True)
+        with st.expander("📋 View Data Table (Full Dataset)"):
+            tech_df_full = aggregator.get_top_technologies(limit=None)
+            st.dataframe(tech_df_full, width='stretch')
     else:
         st.info("No technology data available")
     
@@ -113,20 +117,21 @@ with tab1:
     
     top_n_skills = st.slider("Number of skills to display:", 10, 50, 20, key="skills_slider")
     
-    skills_df = aggregator.get_top_skills(limit=top_n_skills)
+    skills_df_chart = aggregator.get_top_skills(limit=top_n_skills)
     
-    if not skills_df.empty:
+    if not skills_df_chart.empty:
         fig_skills = chart_gen.create_bar_chart(
-            skills_df,
+            skills_df_chart,
             x='Skill',
             y='Count',
             title=f'Top {top_n_skills} Skills',
             orientation='h'
         )
-        st.plotly_chart(fig_skills, use_container_width=True)
+        st.plotly_chart(fig_skills, width='stretch')
         
-        with st.expander("📋 View Data Table"):
-            st.dataframe(skills_df, use_container_width=True)
+        with st.expander("📋 View Data Table (Full Dataset)"):
+            skills_df_full = aggregator.get_top_skills(limit=None)
+            st.dataframe(skills_df_full, width='stretch')
     else:
         st.info("No skills data available")
 
@@ -145,10 +150,10 @@ with tab2:
             title=f'Top {top_n_hackathons} Hackathons by Submissions',
             orientation='h'
         )
-        st.plotly_chart(fig_hackathons, use_container_width=True)
+        st.plotly_chart(fig_hackathons, width='stretch')
         
-        with st.expander("📋 View Data Table"):
-            st.dataframe(hackathon_df, use_container_width=True)
+        with st.expander("📋 View Data Table (Full Dataset)"):
+            st.dataframe(hackathon_df, width='stretch')
     else:
         st.info("No hackathon data available")
     
@@ -166,14 +171,13 @@ with tab2:
                 team_size_df,
                 values='Count',
                 names='Team Size',
-                title='Team Size Distribution',
-                limit=10
+                title='Team Size Distribution'
             )
-            st.plotly_chart(fig_team_pie, use_container_width=True)
+            st.plotly_chart(fig_team_pie, width='stretch')
         
         with col2:
             st.markdown("#### Statistics")
-            st.dataframe(team_size_df, use_container_width=True)
+            st.dataframe(team_size_df, width='stretch')
     else:
         st.info("No team size data available")
 
@@ -182,20 +186,21 @@ with tab3:
     
     top_n_countries = st.slider("Number of countries to display:", 10, 50, 20, key="country_slider")
     
-    country_df = aggregator.get_country_distribution(limit=top_n_countries)
+    country_df_chart = aggregator.get_country_distribution(limit=top_n_countries)
     
-    if not country_df.empty:
+    if not country_df_chart.empty:
         fig_countries = chart_gen.create_bar_chart(
-            country_df,
+            country_df_chart,
             x='Country',
             y='Count',
             title=f'Top {top_n_countries} Countries',
             orientation='h'
         )
-        st.plotly_chart(fig_countries, use_container_width=True)
+        st.plotly_chart(fig_countries, width='stretch')
         
-        with st.expander("📋 View Data Table"):
-            st.dataframe(country_df, use_container_width=True)
+        with st.expander("📋 View Data Table (Full Dataset)"):
+            country_df_full = aggregator.get_country_distribution(limit=None)
+            st.dataframe(country_df_full, width='stretch')
     else:
         st.info("No country data available")
     
@@ -205,20 +210,21 @@ with tab3:
     
     top_n_occupations = st.slider("Number of occupations to display:", 10, 50, 15, key="occupation_slider")
     
-    occupation_df = aggregator.get_occupation_breakdown(limit=top_n_occupations)
+    occupation_df_chart = aggregator.get_occupation_breakdown(limit=top_n_occupations)
     
-    if not occupation_df.empty:
+    if not occupation_df_chart.empty:
         fig_occupations = chart_gen.create_bar_chart(
-            occupation_df,
+            occupation_df_chart,
             x='Occupation',
             y='Count',
             title=f'Top {top_n_occupations} Occupations',
             orientation='h'
         )
-        st.plotly_chart(fig_occupations, use_container_width=True)
+        st.plotly_chart(fig_occupations, width='stretch')
         
-        with st.expander("📋 View Data Table"):
-            st.dataframe(occupation_df, use_container_width=True)
+        with st.expander("📋 View Data Table (Full Dataset)"):
+            occupation_df_full = aggregator.get_occupation_breakdown(limit=None)
+            st.dataframe(occupation_df_full, width='stretch')
     else:
         st.info("No occupation data available")
     
@@ -236,14 +242,13 @@ with tab3:
                 specialty_df,
                 values='Count',
                 names='Specialty',
-                title='Student vs Professional Distribution',
-                limit=10
+                title='Student vs Professional Distribution'
             )
-            st.plotly_chart(fig_specialty, use_container_width=True)
+            st.plotly_chart(fig_specialty, width='stretch')
         
         with col2:
             st.markdown("#### Statistics")
-            st.dataframe(specialty_df, use_container_width=True)
+            st.dataframe(specialty_df, width='stretch')
     else:
         st.info("No specialty data available")
     
@@ -261,14 +266,13 @@ with tab3:
                 work_exp_df,
                 values='Count',
                 names='Experience Range',
-                title='Work Experience Distribution',
-                limit=10
+                title='Work Experience Distribution'
             )
-            st.plotly_chart(fig_work_exp, use_container_width=True)
+            st.plotly_chart(fig_work_exp, width='stretch')
         
         with col2:
             st.markdown("#### Statistics")
-            st.dataframe(work_exp_df, use_container_width=True)
+            st.dataframe(work_exp_df, width='stretch')
     else:
         st.info("No work experience data available")
 
@@ -291,10 +295,10 @@ with tab4:
             title=f'Submissions Over Time ({period.capitalize()})',
             y2='Cumulative'
         )
-        st.plotly_chart(fig_time, use_container_width=True)
+        st.plotly_chart(fig_time, width='stretch')
         
-        with st.expander("📋 View Data Table"):
-            st.dataframe(time_trends_df, use_container_width=True)
+        with st.expander("📋 View Data Table (Full Dataset)"):
+            st.dataframe(time_trends_df, width='stretch')
     else:
         st.info("No time trend data available")
 

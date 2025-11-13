@@ -3,12 +3,15 @@ import os
 import tempfile
 from app.database import Database
 from app.ingest import DataIngestor
+from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Upload Files - Hackathon Analysis",
     page_icon="📤",
     layout="wide"
 )
+
+inject_global_css()
 
 st.title("📤 Upload & Process Files")
 st.markdown("---")
@@ -18,7 +21,7 @@ ingestor = DataIngestor(db)
 
 st.markdown("""
 Upload your hackathon data files for processing. You can either:
-- Upload a ZIP file containing multiple Excel files
+- Upload a ZIP file containing multiple Excel (.xlsx) or CSV (.csv) files
 - Process files from a local folder
 """)
 
@@ -36,7 +39,7 @@ if upload_method == "ZIP File Upload":
     st.subheader("📦 ZIP File Upload")
     
     uploaded_file = st.file_uploader(
-        "Choose a ZIP file containing Excel files",
+        "Choose a ZIP file containing Excel (.xlsx) or CSV (.csv) files",
         type=['zip'],
         help="Maximum file size: 1GB"
     )
@@ -92,6 +95,45 @@ if upload_method == "ZIP File Upload":
                         with st.expander("View Errors"):
                             for error in results['errors']:
                                 st.error(f"**{error['file']}**: {error['error']}")
+                        
+                        if st.button("🔄 Retry Failed Files", key="retry_zip"):
+                            st.markdown("### Retry Status")
+                            
+                            retry_progress_bar = st.progress(0)
+                            retry_status_text = st.empty()
+                            
+                            def update_retry_progress(current, total, filename):
+                                progress = current / total if total > 0 else 0
+                                retry_progress_bar.progress(progress)
+                                retry_status_text.text(f"Retrying file {current}/{total}: {filename}")
+                            
+                            with st.spinner("Retrying failed files..."):
+                                retry_results = ingestor.retry_files_from_errors(results['errors'], update_retry_progress)
+                            
+                            retry_progress_bar.progress(1.0)
+                            retry_status_text.text("Retry complete!")
+                            
+                            st.success("✅ Retry completed!")
+                            
+                            col1, col2, col3, col4 = st.columns(4)
+                            
+                            with col1:
+                                st.metric("Total Retried", retry_results['total_files'])
+                            
+                            with col2:
+                                st.metric("Processed", retry_results['processed_files'])
+                            
+                            with col3:
+                                st.metric("Skipped", retry_results['skipped_files'])
+                            
+                            with col4:
+                                st.metric("Failed", retry_results['failed_files'])
+                            
+                            if retry_results['errors']:
+                                st.warning(f"⚠️ {len(retry_results['errors'])} file(s) still failed:")
+                                with st.expander("View Retry Errors"):
+                                    for error in retry_results['errors']:
+                                        st.error(f"**{error['file']}**: {error['error']}")
                     
                     st.markdown("---")
                     st.info("👉 Navigate to the **Dashboard** page to view your data!")
@@ -107,7 +149,7 @@ else:
     st.subheader("📁 Local Folder Processing")
     
     st.markdown("""
-    Process Excel files from local folders. The tool will look for files in:
+    Process Excel (.xlsx) or CSV (.csv) files from local folders. The tool will look for files in:
     - `./incoming/submissions/` - for submission data files
     - `./incoming/registrants/` - for registrant data files
     """)
@@ -125,16 +167,16 @@ else:
         os.makedirs(folder_path, exist_ok=True)
         st.success(f"✅ Folder created: {folder_path}")
     
-    excel_files = [
+    data_files = [
         f for f in os.listdir(folder_path) 
-        if f.endswith('.xlsx') and not f.startswith('~')
+        if (f.lower().endswith('.xlsx') or f.lower().endswith('.csv')) and not f.startswith('~')
     ] if os.path.exists(folder_path) else []
     
-    if excel_files:
-        st.success(f"✅ Found {len(excel_files)} Excel file(s) in {folder_path}")
+    if data_files:
+        st.success(f"✅ Found {len(data_files)} data file(s) in {folder_path}")
         
         with st.expander("View Files"):
-            for idx, filename in enumerate(excel_files, 1):
+            for idx, filename in enumerate(data_files, 1):
                 file_path = os.path.join(folder_path, filename)
                 file_size = os.path.getsize(file_path) / (1024 * 1024)
                 st.text(f"{idx}. {filename} ({file_size:.2f} MB)")
@@ -183,6 +225,45 @@ else:
                     with st.expander("View Errors"):
                         for error in results['errors']:
                             st.error(f"**{error['file']}**: {error['error']}")
+                    
+                    if st.button("🔄 Retry Failed Files", key="retry_folder"):
+                        st.markdown("### Retry Status")
+                        
+                        retry_progress_bar = st.progress(0)
+                        retry_status_text = st.empty()
+                        
+                        def update_retry_progress(current, total, filename):
+                            progress = current / total if total > 0 else 0
+                            retry_progress_bar.progress(progress)
+                            retry_status_text.text(f"Retrying file {current}/{total}: {filename}")
+                        
+                        with st.spinner("Retrying failed files..."):
+                            retry_results = ingestor.retry_files_from_errors(results['errors'], update_retry_progress)
+                        
+                        retry_progress_bar.progress(1.0)
+                        retry_status_text.text("Retry complete!")
+                        
+                        st.success("✅ Retry completed!")
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric("Total Retried", retry_results['total_files'])
+                        
+                        with col2:
+                            st.metric("Processed", retry_results['processed_files'])
+                        
+                        with col3:
+                            st.metric("Skipped", retry_results['skipped_files'])
+                        
+                        with col4:
+                            st.metric("Failed", retry_results['failed_files'])
+                        
+                        if retry_results['errors']:
+                            st.warning(f"⚠️ {len(retry_results['errors'])} file(s) still failed:")
+                            with st.expander("View Retry Errors"):
+                                for error in retry_results['errors']:
+                                    st.error(f"**{error['file']}**: {error['error']}")
                 
                 st.markdown("---")
                 st.info("👉 Navigate to the **Dashboard** page to view your data!")
@@ -191,8 +272,8 @@ else:
                 st.error(f"❌ Error processing folder: {str(e)}")
     
     else:
-        st.info(f"📂 No Excel files found in {folder_path}")
-        st.markdown(f"Please add Excel files to the folder and refresh this page.")
+        st.info(f"📂 No data files found in {folder_path}")
+        st.markdown(f"Please add Excel (.xlsx) or CSV (.csv) files to the folder and refresh this page.")
 
 st.markdown("---")
 
@@ -226,6 +307,8 @@ st.markdown("---")
 
 with st.expander("ℹ️ File Format Requirements"):
     st.markdown("""
+    **Supported File Types**: Excel (.xlsx) and CSV (.csv)
+    
     **Submission Files** should contain:
     - Organization Name
     - Challenge Title
@@ -247,4 +330,5 @@ with st.expander("ℹ️ File Format Requirements"):
     - Specialty (Student / Professional / Post Grad)
     
     **Note**: Headers may be in the first data row. The tool will automatically normalize them.
+    CSV files will be automatically detected with UTF-8 or Latin-1 encoding.
     """)

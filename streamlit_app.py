@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from app.database import Database
 from app.aggregate import DataAggregator
+from app.ui import inject_global_css
 
 load_dotenv()
 
@@ -12,6 +13,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+inject_global_css()
 
 st.title("📊 Hackathon Data Aggregation Tool")
 st.markdown("---")
