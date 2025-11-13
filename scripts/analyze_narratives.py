@@ -37,6 +37,7 @@ class ProjectExtraction(BaseModel):
     hackathon: str
     
     themes: List[str] = Field(default_factory=list, description="List of themes from taxonomy")
+    theme_confidence: float = Field(0.0, description="Overall confidence in theme extraction (0-1)")
     
     project_type: Optional[str] = Field(None, description="Type of project (mobile_app, web_app, etc)")
     use_cases: List[str] = Field(default_factory=list, description="Short use case phrases")
@@ -62,16 +63,31 @@ class ProjectExtraction(BaseModel):
     
     processed_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     model_version: str = Field("gemini-1.5-flash", description="AI model used")
+    prompt_version: str = Field("v2", description="Prompt version used for extraction")
 
 
 class NarrativeAnalyzer:
     """Analyzes project narratives using Google Gemini AI"""
     
-    def __init__(self, api_key: str, taxonomy_path: str = "taxonomy.json", cache_dir: str = ".cache"):
+    def __init__(self, api_key: str, taxonomy_path: str = "taxonomy.json", cache_dir: str = ".cache", 
+                 temperature: float = 0.1, confidence_threshold: float = 0.6):
         """Initialize analyzer with API key and taxonomy"""
         self.api_key = api_key
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        system_instruction = self._build_system_instruction()
+        
+        self.model = genai.GenerativeModel(
+            'gemini-1.5-flash',
+            system_instruction=system_instruction,
+            generation_config=genai.GenerationConfig(
+                temperature=temperature,
+                top_p=1.0,
+                top_k=1,
+                max_output_tokens=1024,
+                response_mime_type="application/json"
+            )
+        )
         
         with open(taxonomy_path, 'r') as f:
             self.taxonomy = json.load(f)
@@ -79,14 +95,16 @@ class NarrativeAnalyzer:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
         
+        self.confidence_threshold = confidence_threshold
         self.last_request_time = 0
-        self.min_request_interval = 1.0  # seconds between requests
+        self.min_request_interval = 1.0
         
         self.stats = {
             'processed': 0,
             'cached': 0,
             'failed': 0,
-            'validation_errors': 0
+            'validation_errors': 0,
+            'low_confidence': 0
         }
     
     def _get_cache_key(self, narrative: str) -> str:
