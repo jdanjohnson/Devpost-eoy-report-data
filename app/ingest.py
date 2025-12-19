@@ -432,11 +432,14 @@ class DataIngestor:
             if col not in df.columns:
                 continue
             
-            df[col] = pd.to_datetime(df[col], errors='coerce')
+            # Use utc=True to handle mixed time zones consistently
+            # This avoids FutureWarning about mixed time zones
+            df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
             
+            # Convert to naive datetime (drop timezone info)
             if pd.api.types.is_datetime64_any_dtype(df[col]):
                 if hasattr(df[col].dtype, 'tz') and df[col].dtype.tz is not None:
-                    df[col] = df[col].dt.tz_localize(None)
+                    df[col] = df[col].dt.tz_convert(None)
         
         return df
     
