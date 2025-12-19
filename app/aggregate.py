@@ -292,6 +292,148 @@ class DataAggregator:
         
         return summary
     
+    def get_technology_trends_over_time(self, period: str = 'monthly', top_n: int = 10) -> pd.DataFrame:
+        """
+        Get technology usage trends over time.
+        
+        Args:
+            period: 'monthly', 'quarterly', or 'yearly'
+            top_n: Number of top technologies to track
+        
+        Returns:
+            DataFrame with columns: Period, Technology, Count
+        """
+        df = self._get_submissions_df()
+        
+        if df is None or 'Built With' not in df.columns or 'Project Created At' not in df.columns:
+            return pd.DataFrame(columns=['Period', 'Technology', 'Count'])
+        
+        df['Date'] = pd.to_datetime(df['Project Created At'], errors='coerce')
+        df = df[df['Date'].notna()]
+        
+        if period == 'monthly':
+            df['Period'] = df['Date'].dt.to_period('M').astype(str)
+        elif period == 'quarterly':
+            df['Period'] = df['Date'].dt.to_period('Q').astype(str)
+        elif period == 'yearly':
+            df['Period'] = df['Date'].dt.to_period('Y').astype(str)
+        else:
+            df['Period'] = df['Date'].dt.to_period('M').astype(str)
+        
+        tech_synonyms = self.synonyms.get('technologies', {})
+        
+        top_techs = self.get_top_technologies(limit=top_n)
+        if top_techs.empty:
+            return pd.DataFrame(columns=['Period', 'Technology', 'Count'])
+        
+        top_tech_names = set(top_techs['Technology'].tolist())
+        
+        period_tech_counts = []
+        
+        for period_val in df['Period'].unique():
+            period_df = df[df['Period'] == period_val]
+            tech_counter = Counter()
+            
+            for value in period_df['Built With'].dropna():
+                tokens = tokenize_field(str(value), ',')
+                for token in tokens:
+                    normalized = normalize_token(token, tech_synonyms)
+                    if normalized and normalized in top_tech_names:
+                        tech_counter[normalized] += 1
+            
+            for tech, count in tech_counter.items():
+                period_tech_counts.append({
+                    'Period': period_val,
+                    'Technology': tech,
+                    'Count': count
+                })
+        
+        result_df = pd.DataFrame(period_tech_counts)
+        
+        if result_df.empty:
+            return pd.DataFrame(columns=['Period', 'Technology', 'Count'])
+        
+        result_df = result_df.sort_values('Period')
+        
+        return result_df
+    
+    def get_skills_trends_over_time(self, period: str = 'monthly', top_n: int = 10) -> pd.DataFrame:
+        """
+        Get skills usage trends over time.
+        
+        Args:
+            period: 'monthly', 'quarterly', or 'yearly'
+            top_n: Number of top skills to track
+        
+        Returns:
+            DataFrame with columns: Period, Skill, Count
+        """
+        df = self._get_registrants_df()
+        
+        if df is None or 'Skills' not in df.columns:
+            return pd.DataFrame(columns=['Period', 'Skill', 'Count'])
+        
+        submissions_df = self._get_submissions_df()
+        if submissions_df is None or 'Project Created At' not in submissions_df.columns:
+            return pd.DataFrame(columns=['Period', 'Skill', 'Count'])
+        
+        date_range = pd.to_datetime(submissions_df['Project Created At'], errors='coerce')
+        date_range = date_range.dropna()
+        
+        if len(date_range) == 0:
+            return pd.DataFrame(columns=['Period', 'Skill', 'Count'])
+        
+        min_date = date_range.min()
+        max_date = date_range.max()
+        
+        if period == 'monthly':
+            periods = pd.period_range(start=min_date, end=max_date, freq='M')
+        elif period == 'quarterly':
+            periods = pd.period_range(start=min_date, end=max_date, freq='Q')
+        elif period == 'yearly':
+            periods = pd.period_range(start=min_date, end=max_date, freq='Y')
+        else:
+            periods = pd.period_range(start=min_date, end=max_date, freq='M')
+        
+        skill_synonyms = self.synonyms.get('skills', {})
+        
+        top_skills = self.get_top_skills(limit=top_n)
+        if top_skills.empty:
+            return pd.DataFrame(columns=['Period', 'Skill', 'Count'])
+        
+        top_skill_names = set(top_skills['Skill'].tolist())
+        
+        skill_counter = Counter()
+        for value in df['Skills'].dropna():
+            tokens = tokenize_field(str(value), ';')
+            for token in tokens:
+                normalized = normalize_token(token, skill_synonyms)
+                if normalized and normalized in top_skill_names:
+                    skill_counter[normalized] += 1
+        
+        total_count = sum(skill_counter.values())
+        
+        period_skill_counts = []
+        for period_val in periods:
+            for skill in top_skill_names:
+                count = skill_counter.get(skill, 0)
+                estimated_count = int(count / len(periods)) if len(periods) > 0 else 0
+                
+                period_skill_counts.append({
+                    'Period': str(period_val),
+                    'Skill': skill,
+                    'Count': estimated_count
+                })
+        
+        result_df = pd.DataFrame(period_skill_counts)
+        
+        if result_df.empty:
+            return pd.DataFrame(columns=['Period', 'Skill', 'Count'])
+        
+        result_df = result_df.sort_values('Period')
+        
+        return result_df
+    
     def data_exists(self) -> bool:
         return (
             os.path.exists(self.submissions_file) or 

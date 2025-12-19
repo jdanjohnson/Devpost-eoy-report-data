@@ -35,12 +35,13 @@ else:
 
 st.markdown("---")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Time Trends",
     "📅 Year-over-Year",
     "🌡️ Seasonal Patterns",
     "🏢 Organizer Timeline",
-    "🔍 Date Range Filter"
+    "🔍 Date Range Filter",
+    "🔧 Tech & Skills Trends"
 ])
 
 with tab1:
@@ -532,6 +533,221 @@ with tab5:
                     st.warning("No hackathons found in the selected date range.")
     else:
         st.warning("Date information not available in source data.")
+
+with tab6:
+    st.markdown("### 🔧 Technology & Skills Trends Over Time")
+    st.markdown("Track how specific technologies and skills have evolved over time in hackathon submissions.")
+    
+    from app.aggregate import DataAggregator
+    
+    aggregator = DataAggregator()
+    
+    if not aggregator.data_exists():
+        st.warning("⚠️ No processed data available. Please upload and process data first.")
+    else:
+        trend_type = st.radio(
+            "Select Trend Type:",
+            options=['Technologies', 'Skills'],
+            horizontal=True,
+            help="Choose whether to view technology or skills trends"
+        )
+        
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            period = st.selectbox(
+                "Time Period:",
+                options=['monthly', 'quarterly', 'yearly'],
+                index=0,
+                help="Choose how to aggregate the data over time"
+            )
+        
+        with col2:
+            top_n = st.slider(
+                "Number of Top Items to Track:",
+                min_value=3,
+                max_value=20,
+                value=10,
+                help="Select how many top technologies/skills to display"
+            )
+        
+        if trend_type == 'Technologies':
+            with st.spinner("Loading technology trends..."):
+                trends_df = aggregator.get_technology_trends_over_time(period=period, top_n=top_n)
+                
+                if not trends_df.empty:
+                    st.markdown(f"#### Technology Usage Over Time ({period.capitalize()})")
+                    
+                    fig = px.line(
+                        trends_df,
+                        x='Period',
+                        y='Count',
+                        color='Technology',
+                        title=f'Top {top_n} Technologies Usage Over Time',
+                        markers=True
+                    )
+                    fig.update_layout(
+                        xaxis_title='Period',
+                        yaxis_title='Number of Uses',
+                        hovermode='x unified',
+                        height=600,
+                        legend=dict(
+                            orientation="v",
+                            yanchor="top",
+                            y=1,
+                            xanchor="left",
+                            x=1.02
+                        )
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.markdown("#### Technology Comparison")
+                    
+                    pivot_df = trends_df.pivot(index='Period', columns='Technology', values='Count').fillna(0)
+                    
+                    fig_area = go.Figure()
+                    
+                    for tech in pivot_df.columns:
+                        fig_area.add_trace(go.Scatter(
+                            x=pivot_df.index,
+                            y=pivot_df[tech],
+                            mode='lines',
+                            name=tech,
+                            stackgroup='one',
+                            hovertemplate='<b>%{fullData.name}</b><br>Period: %{x}<br>Count: %{y}<extra></extra>'
+                        ))
+                    
+                    fig_area.update_layout(
+                        title=f'Technology Usage Distribution Over Time (Stacked)',
+                        xaxis_title='Period',
+                        yaxis_title='Total Uses',
+                        hovermode='x unified',
+                        height=600,
+                        legend=dict(
+                            orientation="v",
+                            yanchor="top",
+                            y=1,
+                            xanchor="left",
+                            x=1.02
+                        )
+                    )
+                    st.plotly_chart(fig_area, use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.markdown("#### Heatmap View")
+                    
+                    fig_heatmap = px.imshow(
+                        pivot_df.T,
+                        labels=dict(x="Period", y="Technology", color="Count"),
+                        title=f'Technology Usage Heatmap',
+                        aspect="auto",
+                        color_continuous_scale='Blues'
+                    )
+                    fig_heatmap.update_layout(height=max(400, len(pivot_df.columns) * 30))
+                    st.plotly_chart(fig_heatmap, use_container_width=True)
+                    
+                    with st.expander("📋 View Data Table"):
+                        display_df = trends_df.pivot(index='Period', columns='Technology', values='Count').fillna(0)
+                        display_df = display_df.astype(int)
+                        st.dataframe(display_df, use_container_width=True)
+                        
+                        st.markdown("**Summary Statistics**")
+                        summary_df = trends_df.groupby('Technology')['Count'].agg(['sum', 'mean', 'max']).round(2)
+                        summary_df.columns = ['Total Uses', 'Avg per Period', 'Peak Usage']
+                        summary_df = summary_df.sort_values('Total Uses', ascending=False)
+                        st.dataframe(summary_df, use_container_width=True)
+                else:
+                    st.warning("No technology trend data available. Please ensure you have processed submission data with 'Built With' information.")
+        
+        else:
+            with st.spinner("Loading skills trends..."):
+                trends_df = aggregator.get_skills_trends_over_time(period=period, top_n=top_n)
+                
+                if not trends_df.empty:
+                    st.markdown(f"#### Skills Usage Over Time ({period.capitalize()})")
+                    
+                    fig = px.line(
+                        trends_df,
+                        x='Period',
+                        y='Count',
+                        color='Skill',
+                        title=f'Top {top_n} Skills Over Time',
+                        markers=True
+                    )
+                    fig.update_layout(
+                        xaxis_title='Period',
+                        yaxis_title='Number of Registrants',
+                        hovermode='x unified',
+                        height=600,
+                        legend=dict(
+                            orientation="v",
+                            yanchor="top",
+                            y=1,
+                            xanchor="left",
+                            x=1.02
+                        )
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.markdown("#### Skills Comparison")
+                    
+                    pivot_df = trends_df.pivot(index='Period', columns='Skill', values='Count').fillna(0)
+                    
+                    fig_area = go.Figure()
+                    
+                    for skill in pivot_df.columns:
+                        fig_area.add_trace(go.Scatter(
+                            x=pivot_df.index,
+                            y=pivot_df[skill],
+                            mode='lines',
+                            name=skill,
+                            stackgroup='one',
+                            hovertemplate='<b>%{fullData.name}</b><br>Period: %{x}<br>Count: %{y}<extra></extra>'
+                        ))
+                    
+                    fig_area.update_layout(
+                        title=f'Skills Distribution Over Time (Stacked)',
+                        xaxis_title='Period',
+                        yaxis_title='Total Registrants',
+                        hovermode='x unified',
+                        height=600,
+                        legend=dict(
+                            orientation="v",
+                            yanchor="top",
+                            y=1,
+                            xanchor="left",
+                            x=1.02
+                        )
+                    )
+                    st.plotly_chart(fig_area, use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.markdown("#### Heatmap View")
+                    
+                    fig_heatmap = px.imshow(
+                        pivot_df.T,
+                        labels=dict(x="Period", y="Skill", color="Count"),
+                        title=f'Skills Usage Heatmap',
+                        aspect="auto",
+                        color_continuous_scale='Greens'
+                    )
+                    fig_heatmap.update_layout(height=max(400, len(pivot_df.columns) * 30))
+                    st.plotly_chart(fig_heatmap, use_container_width=True)
+                    
+                    with st.expander("📋 View Data Table"):
+                        display_df = trends_df.pivot(index='Period', columns='Skill', values='Count').fillna(0)
+                        display_df = display_df.astype(int)
+                        st.dataframe(display_df, use_container_width=True)
+                        
+                        st.markdown("**Summary Statistics**")
+                        summary_df = trends_df.groupby('Skill')['Count'].agg(['sum', 'mean', 'max']).round(2)
+                        summary_df.columns = ['Total Uses', 'Avg per Period', 'Peak Usage']
+                        summary_df = summary_df.sort_values('Total Uses', ascending=False)
+                        st.dataframe(summary_df, use_container_width=True)
+                else:
+                    st.warning("No skills trend data available. Please ensure you have processed registrant data with 'Skills' information.")
 
 st.markdown("---")
 
