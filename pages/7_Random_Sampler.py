@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import io
 import pandas as pd
 from datetime import datetime
 from app.random_sampler import RandomSampler
@@ -266,12 +267,11 @@ with tab2:
             
             st.markdown("---")
             
-            # Process button
+            # Process button - only runs the batch processing, results are shown separately
             if st.button("🚀 Process All Hackathons", type="primary", key="batch_process"):
                 # Initialize progress tracking
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                results_container = st.container()
                 
                 results = []
                 
@@ -295,83 +295,115 @@ with tab2:
                 progress_bar.progress(1.0)
                 status_text.text(f"✅ Completed processing {total_count} hackathons!")
                 
-                # Store results in session state
+                # Store results in session state so they persist across reruns
                 st.session_state['batch_results'] = results
+                st.session_state['batch_processed'] = True
+            
+            # Display results if they exist in session state (persists across reruns)
+            if st.session_state.get('batch_results'):
+                results = st.session_state['batch_results']
                 
-                # Show summary
-                with results_container:
-                    st.markdown("---")
-                    st.markdown("### 📊 Processing Results")
-                    
-                    success_count = sum(1 for r in results if r['status'] == 'success')
-                    not_found_count = sum(1 for r in results if r['status'] == 'not_found')
-                    total_samples = sum(r['sample_size'] for r in results)
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric("Total Hackathons", len(results))
-                    
-                    with col2:
-                        st.metric("Found in Dataset", success_count)
-                    
-                    with col3:
-                        st.metric("Not Found", not_found_count)
-                    
-                    with col4:
-                        st.metric("Total Samples", total_samples)
-                    
-                    # Show detailed results
-                    st.markdown("#### 📋 Detailed Results")
-                    
-                    results_df = pd.DataFrame([{
-                        'URL': r['url'],
-                        'Hackathon': r['hackathon_name'] or 'N/A',
-                        'Organization': r['organization'] or 'N/A',
-                        'Total Submissions': r['total_submissions'],
-                        'Sampled': r['sample_size'],
-                        'Status': '✅ Success' if r['status'] == 'success' else '❌ Not Found'
-                    } for r in results])
-                    
-                    st.dataframe(results_df, use_container_width=True, hide_index=True)
-                    
-                    st.markdown("---")
-                    
-                    # Export section
-                    st.markdown("### 💾 Export All Samples")
-                    
-                    col1, col2 = st.columns([2, 1])
-                    
-                    with col1:
-                        batch_export_filename = st.text_input(
-                            "Export Filename:",
-                            value=f"batch_random_samples_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            help="Filename for the exported Excel file containing all samples",
-                            key="batch_export_filename"
-                        )
-                    
-                    with col2:
-                        st.markdown("&nbsp;")
-                        st.markdown("&nbsp;")
-                        if st.button("📥 Export All to Excel", key="batch_export"):
-                            export_dir = os.getenv('EXPORT_DIR', './data/processed')
-                            os.makedirs(export_dir, exist_ok=True)
-                            output_path = os.path.join(export_dir, batch_export_filename)
-                            
-                            with st.spinner("Exporting all samples..."):
-                                if sampler.export_batch_samples(results, output_path):
-                                    st.success(f"✅ Exported to: {output_path}")
-                                    
-                                    with open(output_path, 'rb') as f:
-                                        st.download_button(
-                                            label="⬇️ Download File",
-                                            data=f.read(),
-                                            file_name=batch_export_filename,
-                                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            key="batch_download"
-                                        )
-                                else:
-                                    st.error("❌ Failed to export data")
+                st.markdown("---")
+                st.markdown("### 📊 Processing Results")
+                
+                success_count = sum(1 for r in results if r['status'] == 'success')
+                not_found_count = sum(1 for r in results if r['status'] == 'not_found')
+                total_samples = sum(r['sample_size'] for r in results)
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Total Hackathons", len(results))
+                
+                with col2:
+                    st.metric("Found in Dataset", success_count)
+                
+                with col3:
+                    st.metric("Not Found", not_found_count)
+                
+                with col4:
+                    st.metric("Total Samples", total_samples)
+                
+                # Show detailed results
+                st.markdown("#### 📋 Detailed Results")
+                
+                results_df = pd.DataFrame([{
+                    'URL': r['url'],
+                    'Hackathon': r['hackathon_name'] or 'N/A',
+                    'Organization': r['organization'] or 'N/A',
+                    'Total Submissions': r['total_submissions'],
+                    'Sampled': r['sample_size'],
+                    'Status': '✅ Success' if r['status'] == 'success' else '❌ Not Found'
+                } for r in results])
+                
+                st.dataframe(results_df, use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                
+                # Export section - generate Excel in memory and provide direct download
+                st.markdown("### 💾 Export All Samples")
+                
+                # Generate the Excel file in memory
+                output_buffer = io.BytesIO()
+                
+                # Combine all samples into one DataFrame
+                all_samples = []
+                for r in results:
+                    if r['status'] == 'success' and r['sample_df'] is not None:
+                        sample_df = r['sample_df'].copy()
+                        sample_df['Hackathon URL'] = r['url']
+                        sample_df['Hackathon Slug'] = r['slug']
+                        all_samples.append(sample_df)
+                
+                if all_samples:
+                    combined_samples = pd.concat(all_samples, ignore_index=True)
+                else:
+                    combined_samples = pd.DataFrame()
+                
+                # Create summary DataFrame
+                summary_df = pd.DataFrame([{
+                    'Hackathon URL': r['url'],
+                    'Hackathon Slug': r['slug'],
+                    'Hackathon Name': r['hackathon_name'] or 'N/A',
+                    'Organization': r['organization'] or 'N/A',
+                    'Total Submissions': r['total_submissions'],
+                    'Sample Size': r['sample_size'],
+                    'Status': r['status'],
+                    'Error': r.get('error', '')
+                } for r in results])
+                
+                # Create statistics DataFrame
+                stats_df = pd.DataFrame([{
+                    'Total Hackathons Processed': len(results),
+                    'Hackathons Found': success_count,
+                    'Hackathons Not Found': not_found_count,
+                    'Total Samples Collected': total_samples
+                }])
+                
+                # Write to Excel buffer
+                with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
+                    combined_samples.to_excel(writer, sheet_name='All Samples', index=False)
+                    summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                    stats_df.to_excel(writer, sheet_name='Statistics', index=False)
+                
+                output_buffer.seek(0)
+                
+                # Provide direct download button (no separate export step needed)
+                default_filename = f"batch_random_samples_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                st.download_button(
+                    label="📥 Download All Samples (Excel)",
+                    data=output_buffer,
+                    file_name=default_filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="batch_download"
+                )
+                
+                # Option to clear results and start fresh
+                if st.button("🔄 Clear Results & Start Over", key="clear_batch"):
+                    del st.session_state['batch_results']
+                    if 'batch_processed' in st.session_state:
+                        del st.session_state['batch_processed']
+                    st.rerun()
         
         except Exception as e:
             st.error(f"❌ Error loading file: {e}")
