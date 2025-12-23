@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable, Generator
 from app.aggregate import DataAggregator
 
 
@@ -271,3 +271,257 @@ class RandomSampler:
         scored.sort(key=lambda x: (-x[0], -x[1]['submission_count']))
         
         return [h for _, h in scored[:limit]]
+    
+    def load_hackathon_list(
+        self, 
+        file_path: str,
+        filter_column: Optional[str] = None,
+        filter_value: Optional[str] = None
+    ) -> Tuple[pd.DataFrame, str]:
+        """
+        Load a hackathon list from an Excel file.
+        
+        Args:
+            file_path: Path to the Excel file containing hackathon URLs
+            filter_column: Optional column name to filter by (e.g., 'Include_in_Sample')
+            filter_value: Optional value to filter for (e.g., 'YES')
+        
+        Returns:
+            Tuple of (DataFrame with hackathon list, URL column name)
+        """
+        try:
+            df = pd.read_excel(file_path)
+            
+            # Apply filter if specified
+            if filter_column and filter_value:
+                if filter_column in df.columns:
+                    df = df[df[filter_column] == filter_value]
+                else:
+                    raise ValueError(f"Filter column '{filter_column}' not found in file")
+            
+            # Find the URL column
+            url_columns = [c for c in df.columns if 'url' in c.lower()]
+            if not url_columns:
+                # Try to find a column with devpost URLs
+                for col in df.columns:
+                    if df[col].astype(str).str.contains('devpost.com', na=False).any():
+                        url_columns = [col]
+                        break
+            
+            if not url_columns:
+                raise ValueError("No URL column found in the hackathon list file")
+            
+            url_column = url_columns[0]
+            return df, url_column
+        except Exception as e:
+            raise ValueError(f"Error loading hackathon list: {e}")
+    
+    def batch_sample(
+        self,
+        hackathon_urls: List[str],
+        sample_size: int = 30,
+        random_state: Optional[int] = None,
+        progress_callback: Optional[Callable[[int, int, str, str], None]] = None
+    ) -> Generator[Dict, None, None]:
+        """
+        Process multiple hackathons and yield results for each.
+        
+        Args:
+            hackathon_urls: List of hackathon URLs to process
+            sample_size: Number of submissions to sample per hackathon
+            random_state: Base random seed (incremented for each hackathon)
+            progress_callback: Optional callback(current, total, url, status)
+        
+        Yields:
+            Dict with keys: url, slug, hackathon_name, organization, 
+                           total_submissions, sample_size, sample_df, status, error
+        """
+        total = len(hackathon_urls)
+        
+        for idx, url in enumerate(hackathon_urls):
+            if not url or pd.isna(url):
+                continue
+            
+            url = str(url).strip()
+            if not url:
+                continue
+            
+            # Calculate random state for this hackathon
+            current_random_state = None
+            if random_state is not None:
+                current_random_state = random_state + idx
+            
+            # Get sample
+            sample_df, info = self.get_random_sample(
+                url, 
+                sample_size=sample_size,
+                random_state=current_random_state
+            )
+            
+            result = {
+                'url': url,
+                'slug': self.extract_hackathon_slug(url),
+                'hackathon_name': info.get('challenge_title', ''),
+                'organization': info.get('organization', ''),
+                'total_submissions': info.get('total_submissions', 0),
+                'sample_size': info.get('sample_size', 0),
+                'sample_df': sample_df,
+                'status': 'success' if not sample_df.empty else 'not_found',
+                'error': info.get('error', None)
+            }
+            
+            if progress_callback:
+                status = 'success' if result['status'] == 'success' else 'not found'
+                progress_callback(idx + 1, total, url, status)
+            
+            yield result
+    
+    def batch_sample_from_file(
+        self,
+        file_path: str,
+        sample_size: int = 30,
+        random_state: Optional[int] = None,
+        progress_callback: Optional[Callable[[int, int, str, str], None]] = None,
+        filter_column: Optional[str] = None,
+        filter_value: Optional[str] = None
+    ) -> Generator[Dict, None, None]:
+        """
+        Process hackathons from an Excel file and yield results.
+        
+        Args:
+            file_path: Path to Excel file with hackathon URLs
+            sample_size: Number of submissions to sample per hackathon
+            random_state: Base random seed
+            progress_callback: Optional callback(current, total, url, status)
+            filter_column: Optional column name to filter by (e.g., 'Include_in_Sample')
+            filter_value: Optional value to filter for (e.g., 'YES')
+        
+        Yields:
+            Dict with sample results for each hackathon
+        """
+        df, url_column = self.load_hackathon_list(
+            file_path, 
+            filter_column=filter_column, 
+            filter_value=filter_value
+        )
+        urls = df[url_column].dropna().tolist()
+        
+        yield from self.batch_sample(
+            urls,
+            sample_size=sample_size,
+            random_state=random_state,
+            progress_callback=progress_callback
+        )
+    
+    def export_batch_samples(
+        self,
+        results: List[Dict],
+        output_path: str,
+        include_summary: bool = True
+    ) -> bool:
+        """
+        Export batch sample results to a single Excel file.
+        
+        Args:
+            results: List of result dicts from batch_sample
+            output_path: Path to save the Excel file
+            include_summary: Whether to include a summary sheet
+        
+        Returns:
+            True if export successful, False otherwise
+        """
+        try:
+            # Combine all samples into one DataFrame
+            all_samples = []
+            summary_data = []
+            
+            for result in results:
+                if result['status'] == 'success' and not result['sample_df'].empty:
+                    sample_df = result['sample_df'].copy()
+                    # Add hackathon identifier columns
+                    sample_df.insert(0, 'Hackathon URL', result['url'])
+                    sample_df.insert(1, 'Hackathon Slug', result['slug'])
+                    all_samples.append(sample_df)
+                
+                summary_data.append({
+                    'Hackathon URL': result['url'],
+                    'Hackathon Slug': result['slug'],
+                    'Hackathon Name': result['hackathon_name'],
+                    'Organization': result['organization'],
+                    'Total Submissions': result['total_submissions'],
+                    'Sample Size': result['sample_size'],
+                    'Status': result['status'],
+                    'Error': result['error'] or ''
+                })
+            
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                # Write combined samples
+                if all_samples:
+                    combined_df = pd.concat(all_samples, ignore_index=True)
+                    combined_df.to_excel(writer, sheet_name='All Samples', index=False)
+                
+                # Write summary
+                if include_summary:
+                    summary_df = pd.DataFrame(summary_data)
+                    summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                    
+                    # Write statistics
+                    stats = {
+                        'Total Hackathons Processed': len(results),
+                        'Hackathons Found': sum(1 for r in results if r['status'] == 'success'),
+                        'Hackathons Not Found': sum(1 for r in results if r['status'] == 'not_found'),
+                        'Total Samples Collected': sum(r['sample_size'] for r in results),
+                    }
+                    stats_df = pd.DataFrame([stats])
+                    stats_df.to_excel(writer, sheet_name='Statistics', index=False)
+            
+            return True
+        except Exception as e:
+            print(f"Error exporting batch samples: {e}")
+            return False
+    
+    def get_batch_preview(
+        self,
+        file_path: str,
+        limit: int = 10,
+        filter_column: Optional[str] = None,
+        filter_value: Optional[str] = None
+    ) -> Tuple[List[Dict], int]:
+        """
+        Preview hackathons from a list file and check which ones have data.
+        
+        Args:
+            file_path: Path to Excel file with hackathon URLs
+            limit: Number of hackathons to preview
+            filter_column: Optional column name to filter by (e.g., 'Include_in_Sample')
+            filter_value: Optional value to filter for (e.g., 'YES')
+        
+        Returns:
+            Tuple of (list of preview dicts, total count)
+        """
+        df, url_column = self.load_hackathon_list(
+            file_path,
+            filter_column=filter_column,
+            filter_value=filter_value
+        )
+        urls = df[url_column].dropna().tolist()
+        total = len(urls)
+        
+        preview = []
+        for url in urls[:limit]:
+            url = str(url).strip()
+            if not url:
+                continue
+            
+            slug = self.extract_hackathon_slug(url)
+            hackathon_info = self.find_hackathon(url)
+            
+            preview.append({
+                'url': url,
+                'slug': slug,
+                'found': hackathon_info is not None,
+                'hackathon_name': hackathon_info['challenge_title'] if hackathon_info else None,
+                'submission_count': hackathon_info['submission_count'] if hackathon_info else 0
+            })
+        
+        return preview, total
