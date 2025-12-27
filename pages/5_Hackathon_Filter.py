@@ -1,10 +1,6 @@
 import streamlit as st
 import os
 from datetime import datetime
-from app.hackathon_source import HackathonSource
-from app.hackathon_filter import HackathonFilter
-from app.aggregate import DataAggregator
-from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Hackathon Filter - Hackathon Analysis",
@@ -12,14 +8,37 @@ st.set_page_config(
     layout="wide"
 )
 
-inject_global_css()
+@st.cache_resource
+def get_hackathon_source():
+    """Lazily initialize hackathon source."""
+    from app.hackathon_source import HackathonSource
+    return HackathonSource()
+
+@st.cache_resource
+def get_aggregator():
+    """Lazily initialize data aggregator."""
+    from app.aggregate import DataAggregator
+    return DataAggregator()
+
+@st.cache_resource
+def get_filter_tool(_aggregator, _source):
+    """Lazily initialize hackathon filter."""
+    from app.hackathon_filter import HackathonFilter
+    return HackathonFilter(_aggregator, _source)
+
+def inject_css():
+    """Lazily inject global CSS."""
+    from app.ui import inject_global_css
+    inject_global_css()
+
+inject_css()
 
 st.title("🔍 Hackathon & Organizer Filter")
 st.markdown("---")
 
-source = HackathonSource()
-aggregator = DataAggregator()
-filter_tool = HackathonFilter(aggregator, source)
+source = get_hackathon_source()
+aggregator = get_aggregator()
+filter_tool = get_filter_tool(aggregator, source)
 
 if not source.is_loaded():
     st.error("⚠️ Hackathon source data not found. Please ensure 'hackathons_source.xlsx' is in the data directory.")

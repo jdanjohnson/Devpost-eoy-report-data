@@ -2,9 +2,6 @@ import streamlit as st
 import os
 import pandas as pd
 from datetime import datetime
-from app.aggregate import DataAggregator
-from app.export import ExcelExporter
-from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Export - Hackathon Analysis",
@@ -12,13 +9,30 @@ st.set_page_config(
     layout="wide"
 )
 
-inject_global_css()
+@st.cache_resource
+def get_aggregator():
+    """Lazily initialize data aggregator."""
+    from app.aggregate import DataAggregator
+    return DataAggregator()
+
+@st.cache_resource
+def get_exporter(_aggregator):
+    """Lazily initialize Excel exporter."""
+    from app.export import ExcelExporter
+    return ExcelExporter(_aggregator)
+
+def inject_css():
+    """Lazily inject global CSS."""
+    from app.ui import inject_global_css
+    inject_global_css()
+
+inject_css()
 
 st.title("📥 Export Data")
 st.markdown("---")
 
-aggregator = DataAggregator()
-exporter = ExcelExporter(aggregator)
+aggregator = get_aggregator()
+exporter = get_exporter(aggregator)
 
 if not aggregator.data_exists():
     st.warning("⚠️ No data available to export. Please upload and process files first.")

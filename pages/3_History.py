@@ -1,8 +1,5 @@
 import streamlit as st
 import pandas as pd
-from app.database import Database
-from app.ingest import DataIngestor
-from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="History - Hackathon Analysis",
@@ -10,13 +7,30 @@ st.set_page_config(
     layout="wide"
 )
 
-inject_global_css()
+@st.cache_resource
+def get_database():
+    """Lazily initialize database connection."""
+    from app.database import Database
+    return Database()
+
+@st.cache_resource
+def get_ingestor(_db):
+    """Lazily initialize data ingestor."""
+    from app.ingest import DataIngestor
+    return DataIngestor(_db)
+
+def inject_css():
+    """Lazily inject global CSS."""
+    from app.ui import inject_global_css
+    inject_global_css()
+
+inject_css()
 
 st.title("📜 Processing History")
 st.markdown("---")
 
-db = Database()
-ingestor = DataIngestor(db)
+db = get_database()
+ingestor = get_ingestor(db)
 
 st.markdown("""
 View the history of all file processing jobs, including their status, row counts, and any errors encountered.

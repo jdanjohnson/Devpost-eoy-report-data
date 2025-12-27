@@ -3,9 +3,6 @@ import os
 import io
 import pandas as pd
 from datetime import datetime
-from app.random_sampler import RandomSampler
-from app.aggregate import DataAggregator
-from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Random Sampler - Hackathon Analysis",
@@ -13,13 +10,30 @@ st.set_page_config(
     layout="wide"
 )
 
-inject_global_css()
+@st.cache_resource
+def get_aggregator():
+    """Lazily initialize data aggregator."""
+    from app.aggregate import DataAggregator
+    return DataAggregator()
+
+@st.cache_resource
+def get_sampler(_aggregator):
+    """Lazily initialize random sampler."""
+    from app.random_sampler import RandomSampler
+    return RandomSampler(_aggregator)
+
+def inject_css():
+    """Lazily inject global CSS."""
+    from app.ui import inject_global_css
+    inject_global_css()
+
+inject_css()
 
 st.title("🎲 Random Submission Sampler")
 st.markdown("---")
 
-aggregator = DataAggregator()
-sampler = RandomSampler(aggregator)
+aggregator = get_aggregator()
+sampler = get_sampler(aggregator)
 
 if not aggregator.data_exists():
     st.warning("⚠️ No processed data available. Please upload and process files first.")
