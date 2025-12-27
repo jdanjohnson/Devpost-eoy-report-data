@@ -1,5 +1,4 @@
 import pandas as pd
-import duckdb
 import os
 from typing import Dict, Any, List, Optional
 from collections import Counter

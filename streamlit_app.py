@@ -1,9 +1,10 @@
+import sys
+print(f"[BUILD INFO] Python version: {sys.version}", flush=True)
+print(f"[BUILD INFO] Build ID: 2025-12-27-v3", flush=True)
+
 import streamlit as st
 import os
 from dotenv import load_dotenv
-from app.database import Database
-from app.aggregate import DataAggregator
-from app.ui import inject_global_css
 
 load_dotenv()
 
@@ -14,13 +15,30 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-inject_global_css()
+@st.cache_resource
+def get_database():
+    """Lazily initialize database connection."""
+    from app.database import Database
+    return Database()
+
+@st.cache_resource
+def get_aggregator():
+    """Lazily initialize data aggregator."""
+    from app.aggregate import DataAggregator
+    return DataAggregator()
+
+def inject_css():
+    """Lazily inject global CSS."""
+    from app.ui import inject_global_css
+    inject_global_css()
+
+inject_css()
 
 st.title("📊 Hackathon Data Aggregation Tool")
 st.markdown("---")
 
-db = Database()
-aggregator = DataAggregator()
+db = get_database()
+aggregator = get_aggregator()
 
 st.markdown("""
 

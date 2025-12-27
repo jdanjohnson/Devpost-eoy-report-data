@@ -1,7 +1,4 @@
 import streamlit as st
-from app.aggregate import DataAggregator
-from app.visualize import ChartGenerator
-from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Dashboard - Hackathon Analysis",
@@ -9,13 +6,30 @@ st.set_page_config(
     layout="wide"
 )
 
-inject_global_css()
+@st.cache_resource
+def get_aggregator():
+    """Lazily initialize data aggregator."""
+    from app.aggregate import DataAggregator
+    return DataAggregator()
+
+@st.cache_resource
+def get_chart_generator():
+    """Lazily initialize chart generator."""
+    from app.visualize import ChartGenerator
+    return ChartGenerator()
+
+def inject_css():
+    """Lazily inject global CSS."""
+    from app.ui import inject_global_css
+    inject_global_css()
+
+inject_css()
 
 st.title("📊 Analytics Dashboard")
 st.markdown("---")
 
-aggregator = DataAggregator()
-chart_gen = ChartGenerator()
+aggregator = get_aggregator()
+chart_gen = get_chart_generator()
 
 if not aggregator.data_exists():
     st.warning("⚠️ No data available. Please upload and process files first.")

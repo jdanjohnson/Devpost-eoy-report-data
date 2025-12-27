@@ -3,9 +3,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from app.hackathon_source import HackathonSource
-from app.visualize import ChartGenerator
-from app.ui import inject_global_css
 
 st.set_page_config(
     page_title="Timeline Analysis - Hackathon Analysis",
@@ -13,19 +10,36 @@ st.set_page_config(
     layout="wide"
 )
 
-inject_global_css()
+@st.cache_resource
+def get_hackathon_source():
+    """Lazily initialize hackathon source."""
+    from app.hackathon_source import HackathonSource
+    return HackathonSource()
+
+@st.cache_resource
+def get_chart_generator():
+    """Lazily initialize chart generator."""
+    from app.visualize import ChartGenerator
+    return ChartGenerator()
+
+def inject_css():
+    """Lazily inject global CSS."""
+    from app.ui import inject_global_css
+    inject_global_css()
+
+inject_css()
 
 st.title("📈 Timeline & Trend Analysis")
 st.markdown("---")
 
-source = HackathonSource()
+source = get_hackathon_source()
 
 if not source.is_loaded():
     st.error("⚠️ Hackathon source data not found. Please ensure 'hackathons_source.xlsx' is in the data directory.")
     st.info("📁 Expected location: `./data/hackathons_source.xlsx`")
     st.stop()
 
-chart_gen = ChartGenerator()
+chart_gen = get_chart_generator()
 
 date_range = source.get_date_range()
 if date_range[0] and date_range[1]:
