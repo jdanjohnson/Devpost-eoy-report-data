@@ -13,17 +13,54 @@ class DataAggregator:
         self.data_dir = data_dir
         self.submissions_file = f"{data_dir}/submissions/data.parquet"
         self.registrants_file = f"{data_dir}/registrants/data.parquet"
+        self.submissions_parts_dir = f"{data_dir}/submissions/parts"
+        self.registrants_parts_dir = f"{data_dir}/registrants/parts"
         self.synonyms = load_synonyms()
     
+    def _read_parquet_dataset(self, parts_dir: str, legacy_file: str) -> Optional[pd.DataFrame]:
+        """Read parquet data from parts directory or legacy single file.
+        
+        This supports both the new partitioned format (multiple parquet files in parts/)
+        and the legacy single-file format for backwards compatibility.
+        """
+        dfs = []
+        
+        # Read from parts directory if it exists
+        if os.path.exists(parts_dir):
+            part_files = [f for f in os.listdir(parts_dir) if f.endswith('.parquet')]
+            for part_file in part_files:
+                part_path = os.path.join(parts_dir, part_file)
+                try:
+                    df = pd.read_parquet(part_path)
+                    dfs.append(df)
+                except Exception as e:
+                    print(f"[AGGREGATE] Warning: Failed to read {part_path}: {e}", flush=True)
+        
+        # Also read legacy single file if it exists (for backwards compatibility)
+        if os.path.exists(legacy_file):
+            try:
+                df = pd.read_parquet(legacy_file)
+                dfs.append(df)
+            except Exception as e:
+                print(f"[AGGREGATE] Warning: Failed to read {legacy_file}: {e}", flush=True)
+        
+        if not dfs:
+            return None
+        
+        # Combine all dataframes
+        combined_df = pd.concat(dfs, ignore_index=True)
+        
+        # Deduplicate if _dedup_key exists
+        if '_dedup_key' in combined_df.columns:
+            combined_df = combined_df.drop_duplicates(subset=['_dedup_key'], keep='first')
+        
+        return combined_df
+    
     def _get_submissions_df(self) -> Optional[pd.DataFrame]:
-        if os.path.exists(self.submissions_file):
-            return pd.read_parquet(self.submissions_file)
-        return None
+        return self._read_parquet_dataset(self.submissions_parts_dir, self.submissions_file)
     
     def _get_registrants_df(self) -> Optional[pd.DataFrame]:
-        if os.path.exists(self.registrants_file):
-            return pd.read_parquet(self.registrants_file)
-        return None
+        return self._read_parquet_dataset(self.registrants_parts_dir, self.registrants_file)
     
     def get_top_technologies(self, limit: Optional[int] = 50) -> pd.DataFrame:
         df = self._get_submissions_df()
@@ -434,6 +471,15 @@ class DataAggregator:
         return result_df
     
     def data_exists(self) -> bool:
+        """Check if any data exists (either in parts directories or legacy files)."""
+        # Check parts directories
+        if os.path.exists(self.submissions_parts_dir):
+            if any(f.endswith('.parquet') for f in os.listdir(self.submissions_parts_dir)):
+                return True
+        if os.path.exists(self.registrants_parts_dir):
+            if any(f.endswith('.parquet') for f in os.listdir(self.registrants_parts_dir)):
+                return True
+        # Check legacy files
         return (
             os.path.exists(self.submissions_file) or 
             os.path.exists(self.registrants_file)
