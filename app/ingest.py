@@ -139,31 +139,41 @@ class DataIngestor:
     
     def process_single_file(self, file_path: str, retry_path: str = None) -> Dict[str, Any]:
         file_ext = os.path.splitext(file_path)[1].lower()
+        file_name = os.path.basename(file_path)
+        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        
+        print(f"[INGEST] Starting: {file_name} ({file_size_mb:.1f} MB, {file_ext})", flush=True)
+        
         if file_ext not in ['.xlsx', '.csv']:
             return {'status': 'failed', 'error': 'Invalid file type (must be .xlsx or .csv)'}
         
         if file_ext == '.xlsx' and not validate_excel_file(file_path):
             return {'status': 'failed', 'error': 'Invalid Excel file'}
         
+        print(f"[INGEST] Computing file hash...", flush=True)
         file_hash = compute_file_hash(file_path)
         
         if self.db.is_file_processed(file_hash):
             return {'status': 'skipped', 'reason': 'Already processed'}
         
         try:
+            print(f"[INGEST] Loading file into memory...", flush=True)
             df = self.load_file(file_path)
             
             if df is None or df.empty:
                 return {'status': 'failed', 'error': 'Empty or unreadable file'}
             
+            print(f"[INGEST] Loaded {len(df)} rows, {len(df.columns)} columns", flush=True)
+            
             df = self.normalize_headers(df)
             
-            file_name = os.path.basename(file_path)
             file_type = self.detect_file_type(df, file_name)
             
             if file_type == 'unknown':
                 columns_found = ', '.join(df.columns.tolist())
                 return {'status': 'failed', 'error': f'Unknown file type. Columns found: {columns_found}'}
+            
+            print(f"[INGEST] Detected type: {file_type}", flush=True)
             
             if retry_path is None:
                 retry_path = self._persist_file_for_retry(file_path, file_hash, file_type)
@@ -171,12 +181,16 @@ class DataIngestor:
             job_id = self.db.log_job_start(file_hash, file_name, file_type, retry_path)
             
             try:
+                print(f"[INGEST] Cleaning data...", flush=True)
                 df = self.clean_data(df, file_type)
                 
+                print(f"[INGEST] Adding dedup key...", flush=True)
                 df = self.add_dedup_key(df, file_type)
                 
-                self.write_to_parquet(df, file_type)
+                print(f"[INGEST] Writing to parquet...", flush=True)
+                self.write_to_parquet(df, file_type, file_hash)
                 
+                print(f"[INGEST] Complete! Processed {len(df)} rows", flush=True)
                 self.db.log_job_complete(job_id, len(df))
                 
                 if retry_path and os.path.exists(retry_path):
@@ -350,34 +364,31 @@ class DataIngestor:
         
         return df
     
-    def write_to_parquet(self, df: pd.DataFrame, file_type: str) -> None:
-        output_dir = f"{self.data_dir}/{file_type}s"
-        os.makedirs(output_dir, exist_ok=True)
+    def write_to_parquet(self, df: pd.DataFrame, file_type: str, file_hash: str = None) -> None:
+        """Write DataFrame to parquet using partitioned storage to reduce memory usage.
         
-        output_file = f"{output_dir}/data.parquet"
+        Instead of loading all historical data and concatenating (which causes OOM on large files),
+        we write each upload as a separate parquet file in a 'parts' subdirectory.
+        The aggregator reads all parts as a dataset.
+        """
+        output_dir = f"{self.data_dir}/{file_type}s"
+        parts_dir = f"{output_dir}/parts"
+        os.makedirs(parts_dir, exist_ok=True)
         
         if file_type == 'submission':
             date_columns = ['Project Created At', 'Challenge Published At', 'Created At']
             df = self._coerce_date_columns(df, date_columns)
         
-        if os.path.exists(output_file):
-            existing_df = pd.read_parquet(output_file)
-            
-            if file_type == 'submission':
-                date_columns = ['Project Created At', 'Challenge Published At', 'Created At']
-                existing_df = self._coerce_date_columns(existing_df, date_columns)
-            
-            combined_df = pd.concat([existing_df, df], ignore_index=True)
-            
-            if file_type == 'submission':
-                combined_df = self._coerce_date_columns(combined_df, date_columns)
-            
-            if '_dedup_key' in combined_df.columns:
-                combined_df = combined_df.drop_duplicates(subset=['_dedup_key'], keep='first')
-            
-            combined_df.to_parquet(output_file, index=False, engine='pyarrow')
+        # Write to a part file named by file hash (or timestamp if no hash)
+        if file_hash:
+            part_file = f"{parts_dir}/{file_hash}.parquet"
         else:
-            df.to_parquet(output_file, index=False, engine='pyarrow')
+            import time
+            part_file = f"{parts_dir}/{int(time.time() * 1000)}.parquet"
+        
+        print(f"[INGEST] Writing {len(df)} rows to {part_file}", flush=True)
+        df.to_parquet(part_file, index=False, engine='pyarrow')
+        print(f"[INGEST] Parquet write complete", flush=True)
     
     def get_data_summary(self) -> Dict[str, Any]:
         summary = {
