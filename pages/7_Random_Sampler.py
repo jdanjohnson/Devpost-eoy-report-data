@@ -65,13 +65,21 @@ with tab1:
         )
     
     with col2:
+        export_all_single = st.checkbox(
+            "Export All Data",
+            value=False,
+            help="Export all submissions instead of a random sample",
+            key="single_export_all"
+        )
+        
         sample_size = st.number_input(
             "Sample Size:",
             min_value=1,
             max_value=100,
             value=30,
-            help="Number of random submissions to extract",
-            key="single_sample_size"
+            help="Number of random submissions to extract (ignored if 'Export All Data' is checked)",
+            key="single_sample_size",
+            disabled=export_all_single
         )
     
     # Advanced options
@@ -79,22 +87,25 @@ with tab1:
         col1, col2 = st.columns(2)
         
         with col1:
-            use_seed = st.checkbox("Use fixed random seed", value=False, help="Enable for reproducible results", key="single_use_seed")
+            use_seed = st.checkbox("Use fixed random seed", value=False, help="Enable for reproducible results", key="single_use_seed", disabled=export_all_single)
         
         with col2:
-            if use_seed:
+            if use_seed and not export_all_single:
                 random_seed = st.number_input("Random Seed:", min_value=0, value=42, key="single_random_seed")
             else:
                 random_seed = None
     
     # Search/Sample button
-    if st.button("🎲 Generate Random Sample", type="primary", disabled=not hackathon_input, key="single_generate"):
+    button_label = "📦 Export All Submissions" if export_all_single else "🎲 Generate Random Sample"
+    if st.button(button_label, type="primary", disabled=not hackathon_input, key="single_generate"):
         if hackathon_input:
-            with st.spinner(f"Searching for hackathon and generating sample..."):
+            spinner_text = "Exporting all submissions..." if export_all_single else "Searching for hackathon and generating sample..."
+            with st.spinner(spinner_text):
                 sampled_df, info = sampler.get_random_sample(
                     hackathon_input, 
                     sample_size=sample_size,
-                    random_state=random_seed
+                    random_state=random_seed,
+                    export_all=export_all_single
                 )
                 
                 if 'error' in info:
@@ -247,28 +258,38 @@ with tab2:
             # Batch processing options
             st.markdown("#### ⚙️ Batch Processing Options")
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
+                batch_export_all = st.checkbox(
+                    "Export All Data",
+                    value=False,
+                    help="Export all submissions instead of random samples",
+                    key="batch_export_all"
+                )
+            
+            with col2:
                 batch_sample_size = st.number_input(
                     "Sample Size per Hackathon:",
                     min_value=1,
                     max_value=100,
                     value=30,
-                    help="Number of random submissions to extract from each hackathon",
-                    key="batch_sample_size"
+                    help="Number of random submissions to extract from each hackathon (ignored if 'Export All Data' is checked)",
+                    key="batch_sample_size",
+                    disabled=batch_export_all
                 )
             
-            with col2:
+            with col3:
                 batch_use_seed = st.checkbox(
                     "Use fixed random seed",
                     value=True,
                     help="Enable for reproducible results across all hackathons",
-                    key="batch_use_seed"
+                    key="batch_use_seed",
+                    disabled=batch_export_all
                 )
             
-            with col3:
-                if batch_use_seed:
+            with col4:
+                if batch_use_seed and not batch_export_all:
                     batch_random_seed = st.number_input(
                         "Base Random Seed:",
                         min_value=0,
@@ -282,7 +303,8 @@ with tab2:
             st.markdown("---")
             
             # Process button - only runs the batch processing, results are shown separately
-            if st.button("🚀 Process All Hackathons", type="primary", key="batch_process"):
+            batch_button_label = "📦 Export All Submissions" if batch_export_all else "🚀 Process All Hackathons"
+            if st.button(batch_button_label, type="primary", key="batch_process"):
                 # Initialize progress tracking
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -295,7 +317,8 @@ with tab2:
                     sample_size=batch_sample_size,
                     random_state=batch_random_seed,
                     filter_column=filter_column,
-                    filter_value=filter_value
+                    filter_value=filter_value,
+                    export_all=batch_export_all
                 ):
                     results.append(result)
                     
@@ -463,25 +486,38 @@ with st.expander("ℹ️ About This Feature"):
     **Random Submission Sampler**
     
     This tool extracts random samples of submissions from hackathons in the processed dataset.
+    You can also export all submissions instead of random samples.
     
     **Single Hackathon Mode:**
     1. Enter a hackathon URL (e.g., `https://hackonomics.devpost.com`) or name
-    2. Set the desired sample size (default: 30)
-    3. Click "Generate Random Sample" to extract random submissions
+    2. Check "Export All Data" to get all submissions, or set a sample size for random sampling
+    3. Click the button to extract submissions
     4. Export the results to Excel for further analysis
     
     **Batch Processing Mode:**
     1. Upload an Excel file containing hackathon URLs
-    2. Set the sample size per hackathon
-    3. Click "Process All Hackathons" to extract samples from all hackathons
+    2. Check "Export All Data" to get all submissions, or set a sample size per hackathon
+    3. Click the button to process all hackathons
     4. Export all samples to a single Excel file with summary sheets
     
     **Features:**
+    - **Export All Data:** Option to export all submissions instead of random samples
     - **Flexible Input:** Accepts full URLs, subdomains, or hackathon names
     - **Smart Matching:** Finds hackathons even with partial matches
     - **Reproducible Results:** Use a fixed random seed for consistent sampling
     - **Batch Processing:** Process hundreds of hackathons at once
     - **Export Capability:** Download samples as Excel files with metadata
+    
+    **Output Columns:**
+    - All existing columns (Project Title, Submission URL, Organization, etc.)
+    - **Year:** Extracted from the submission date
+    - **Submission Bucket:** Classification based on hackathon size:
+      - Bucket E (Mega): 300+ submissions
+      - Bucket D (Large): 100-299 submissions
+      - Bucket C (Mid-Size): 25-99 submissions
+      - Bucket B (Small): 10-24 submissions
+      - Bucket A (Micro): 1-9 submissions
+    - **Hackathon Year:** The year of the hackathon
     
     **Output Format (Batch):**
     - **All Samples sheet:** Combined samples from all hackathons with URL identifiers
