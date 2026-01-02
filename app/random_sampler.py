@@ -11,9 +11,60 @@ class RandomSampler:
     Extracts random submissions from a hackathon based on name or URL.
     """
     
+    # Submission bucket thresholds
+    BUCKET_THRESHOLDS = [
+        (300, 'Bucket E (Mega)'),      # 300+ submissions
+        (100, 'Bucket D (Large)'),     # 100-299 submissions
+        (25, 'Bucket C (Mid-Size)'),   # 25-99 submissions
+        (10, 'Bucket B (Small)'),      # 10-24 submissions
+        (1, 'Bucket A (Micro)'),       # 1-9 submissions
+    ]
+    
     def __init__(self, aggregator: DataAggregator = None):
         self.aggregator = aggregator if aggregator else DataAggregator()
         self.submissions_df = self.aggregator._get_submissions_df()
+    
+    @staticmethod
+    def get_submission_bucket(submission_count: int) -> str:
+        """
+        Get the submission bucket classification based on number of submissions.
+        
+        Bucket E (Mega): 300+ submissions
+        Bucket D (Large): 100-299 submissions
+        Bucket C (Mid-Size): 25-99 submissions
+        Bucket B (Small): 10-24 submissions
+        Bucket A (Micro): 1-9 submissions
+        """
+        for threshold, bucket_name in RandomSampler.BUCKET_THRESHOLDS:
+            if submission_count >= threshold:
+                return bucket_name
+        return 'Bucket A (Micro)'  # Default for 0 or negative (shouldn't happen)
+    
+    @staticmethod
+    def extract_year_from_date(date_value) -> Optional[int]:
+        """
+        Extract year from a date value.
+        
+        Args:
+            date_value: Date string or datetime object
+        
+        Returns:
+            Year as integer, or None if parsing fails
+        """
+        if pd.isna(date_value):
+            return None
+        try:
+            if isinstance(date_value, str):
+                parsed_date = pd.to_datetime(date_value, errors='coerce')
+                if pd.isna(parsed_date):
+                    return None
+                return parsed_date.year
+            elif hasattr(date_value, 'year'):
+                return date_value.year
+            else:
+                return None
+        except Exception:
+            return None
     
     @staticmethod
     def extract_hackathon_slug(url_or_name: str) -> str:
@@ -111,15 +162,17 @@ class RandomSampler:
         self, 
         identifier: str, 
         sample_size: int = 30, 
-        random_state: Optional[int] = None
+        random_state: Optional[int] = None,
+        export_all: bool = False
     ) -> Tuple[pd.DataFrame, Dict]:
         """
-        Get a random sample of submissions from a hackathon.
+        Get a random sample of submissions from a hackathon, or all submissions if export_all is True.
         
         Args:
             identifier: Hackathon URL or name
-            sample_size: Number of submissions to sample (default: 30)
+            sample_size: Number of submissions to sample (default: 30, ignored if export_all=True)
             random_state: Random seed for reproducibility (optional)
+            export_all: If True, return all submissions instead of a random sample
         
         Returns:
             Tuple of (sampled DataFrame, hackathon info dict)
@@ -150,18 +203,33 @@ class RandomSampler:
                 'searched_slug': slug
             }
         
+        total_submissions = len(matching)
+        
+        # Determine actual sample size
+        if export_all:
+            actual_sample_size = total_submissions
+            sampled = matching.copy()
+        else:
+            actual_sample_size = min(sample_size, total_submissions)
+            sampled = matching.sample(n=actual_sample_size, random_state=random_state)
+        
+        # Calculate hackathon year from submission dates
+        hackathon_year = None
+        if 'Project Created At' in matching.columns:
+            years = matching['Project Created At'].apply(self.extract_year_from_date).dropna()
+            if len(years) > 0:
+                hackathon_year = int(years.mode().iloc[0]) if len(years.mode()) > 0 else int(years.iloc[0])
+        
         hackathon_info = {
             'slug': matching['hackathon_slug'].iloc[0] if pd.notna(matching['hackathon_slug'].iloc[0]) else slug,
             'challenge_title': matching['Challenge Title'].iloc[0],
             'organization': matching['Organization Name'].iloc[0],
-            'total_submissions': len(matching),
-            'sample_size': min(sample_size, len(matching)),
-            'url': f"https://{matching['hackathon_slug'].iloc[0]}.devpost.com" if pd.notna(matching['hackathon_slug'].iloc[0]) else None
+            'total_submissions': total_submissions,
+            'sample_size': actual_sample_size,
+            'url': f"https://{matching['hackathon_slug'].iloc[0]}.devpost.com" if pd.notna(matching['hackathon_slug'].iloc[0]) else None,
+            'submission_bucket': self.get_submission_bucket(total_submissions),
+            'hackathon_year': hackathon_year
         }
-        
-        # Sample submissions
-        actual_sample_size = min(sample_size, len(matching))
-        sampled = matching.sample(n=actual_sample_size, random_state=random_state)
         
         # Select relevant columns for output
         output_columns = [
@@ -178,6 +246,16 @@ class RandomSampler:
         # Only include columns that exist
         available_columns = [col for col in output_columns if col in sampled.columns]
         sampled = sampled[available_columns].reset_index(drop=True)
+        
+        # Add Year column extracted from Project Created At
+        if 'Project Created At' in sampled.columns:
+            sampled['Year'] = sampled['Project Created At'].apply(self.extract_year_from_date)
+        
+        # Add Submission Bucket column
+        sampled['Submission Bucket'] = hackathon_info['submission_bucket']
+        
+        # Add Hackathon Year column
+        sampled['Hackathon Year'] = hackathon_info['hackathon_year']
         
         return sampled, hackathon_info
     
@@ -321,20 +399,23 @@ class RandomSampler:
         hackathon_urls: List[str],
         sample_size: int = 30,
         random_state: Optional[int] = None,
-        progress_callback: Optional[Callable[[int, int, str, str], None]] = None
+        progress_callback: Optional[Callable[[int, int, str, str], None]] = None,
+        export_all: bool = False
     ) -> Generator[Dict, None, None]:
         """
         Process multiple hackathons and yield results for each.
         
         Args:
             hackathon_urls: List of hackathon URLs to process
-            sample_size: Number of submissions to sample per hackathon
+            sample_size: Number of submissions to sample per hackathon (ignored if export_all=True)
             random_state: Base random seed (incremented for each hackathon)
             progress_callback: Optional callback(current, total, url, status)
+            export_all: If True, return all submissions instead of a random sample
         
         Yields:
             Dict with keys: url, slug, hackathon_name, organization, 
-                           total_submissions, sample_size, sample_df, status, error
+                           total_submissions, sample_size, sample_df, status, error,
+                           submission_bucket, hackathon_year
         """
         total = len(hackathon_urls)
         
@@ -355,7 +436,8 @@ class RandomSampler:
             sample_df, info = self.get_random_sample(
                 url, 
                 sample_size=sample_size,
-                random_state=current_random_state
+                random_state=current_random_state,
+                export_all=export_all
             )
             
             result = {
@@ -367,7 +449,9 @@ class RandomSampler:
                 'sample_size': info.get('sample_size', 0),
                 'sample_df': sample_df,
                 'status': 'success' if not sample_df.empty else 'not_found',
-                'error': info.get('error', None)
+                'error': info.get('error', None),
+                'submission_bucket': info.get('submission_bucket', ''),
+                'hackathon_year': info.get('hackathon_year', None)
             }
             
             if progress_callback:
@@ -383,18 +467,20 @@ class RandomSampler:
         random_state: Optional[int] = None,
         progress_callback: Optional[Callable[[int, int, str, str], None]] = None,
         filter_column: Optional[str] = None,
-        filter_value: Optional[str] = None
+        filter_value: Optional[str] = None,
+        export_all: bool = False
     ) -> Generator[Dict, None, None]:
         """
         Process hackathons from an Excel file and yield results.
         
         Args:
             file_path: Path to Excel file with hackathon URLs
-            sample_size: Number of submissions to sample per hackathon
+            sample_size: Number of submissions to sample per hackathon (ignored if export_all=True)
             random_state: Base random seed
             progress_callback: Optional callback(current, total, url, status)
             filter_column: Optional column name to filter by (e.g., 'Include_in_Sample')
             filter_value: Optional value to filter for (e.g., 'YES')
+            export_all: If True, return all submissions instead of a random sample
         
         Yields:
             Dict with sample results for each hackathon
@@ -410,7 +496,8 @@ class RandomSampler:
             urls,
             sample_size=sample_size,
             random_state=random_state,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            export_all=export_all
         )
     
     def export_batch_samples(
