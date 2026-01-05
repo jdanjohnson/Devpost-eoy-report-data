@@ -18,6 +18,7 @@ build/
 # Data files
 data/*
 !data/hackathons_source.xlsx
+!data/ai_hackathons_list.xlsx
 incoming/
 temp/
 *.parquet
