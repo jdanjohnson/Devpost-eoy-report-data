@@ -35,10 +35,70 @@ st.markdown("---")
 aggregator = get_aggregator()
 sampler = get_sampler(aggregator)
 
-if not aggregator.data_exists():
-    st.warning("⚠️ No processed data available. Please upload and process files first.")
-    st.info("👉 Navigate to the **Upload** page to get started!")
-    st.stop()
+# Check if data exists
+data_available = aggregator.data_exists()
+
+if not data_available:
+    st.warning("⚠️ No processed submission data available.")
+    
+    # Show data loading options
+    with st.expander("📥 Load Submission Data", expanded=True):
+        st.markdown("""
+        **Option 1:** Navigate to the **Upload** page to upload and process submission files.
+        
+        **Option 2:** Load data from Google Drive (if you have a shared zip file with parquet data).
+        """)
+        
+        # Google Drive data loading
+        st.markdown("#### Load from Google Drive")
+        gdrive_url = st.text_input(
+            "Google Drive File ID or URL:",
+            placeholder="e.g., 18UQBsGwCxEnZG46NOaJn6Q68Jn2s6ZyJ or full URL",
+            help="Enter the Google Drive file ID or full sharing URL for a zip file containing submission parquet data"
+        )
+        
+        if st.button("📥 Download and Load Data", type="primary", disabled=not gdrive_url):
+            import re
+            import subprocess
+            import zipfile
+            
+            # Extract file ID from URL if needed
+            file_id = gdrive_url.strip()
+            if 'drive.google.com' in file_id:
+                match = re.search(r'/d/([a-zA-Z0-9_-]+)', file_id)
+                if match:
+                    file_id = match.group(1)
+            
+            with st.spinner("Downloading data from Google Drive..."):
+                try:
+                    # Download using gdown
+                    zip_path = "/tmp/submissions_data.zip"
+                    result = subprocess.run(
+                        ["gdown", file_id, "-O", zip_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    
+                    if result.returncode != 0:
+                        st.error(f"Download failed: {result.stderr}")
+                        st.info("Make sure the Google Drive file is shared with 'Anyone with the link' permission.")
+                    else:
+                        # Extract zip file
+                        extract_dir = "./data/submissions/parts"
+                        os.makedirs(extract_dir, exist_ok=True)
+                        
+                        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                            zip_ref.extractall(extract_dir)
+                        
+                        st.success("✅ Data loaded successfully! Please refresh the page.")
+                        st.rerun()
+                except subprocess.TimeoutExpired:
+                    st.error("Download timed out. The file may be too large or the connection is slow.")
+                except Exception as e:
+                    st.error(f"Error loading data: {e}")
+    
+    st.markdown("---")
 
 st.markdown("""
 This tool allows you to extract random samples of submissions from hackathons in the dataset.
