@@ -42,13 +42,14 @@ if not aggregator.data_exists():
 
 st.markdown("""
 This tool allows you to extract random samples of submissions from hackathons in the dataset.
-Use **Single Hackathon** mode for individual sampling, or **Batch Processing** to process an entire list of hackathons at once.
+Use **Single Hackathon** mode for individual sampling, **Batch Processing** to process an entire list of hackathons at once,
+or **AI Hackathon Export** to export data from all AI/ML hackathons in the built-in list.
 """)
 
 st.markdown("---")
 
-# Create tabs for single and batch processing
-tab1, tab2 = st.tabs(["🎯 Single Hackathon", "📋 Batch Processing"])
+# Create tabs for single, batch, and AI hackathon processing
+tab1, tab2, tab3 = st.tabs(["🎯 Single Hackathon", "📋 Batch Processing", "🤖 AI Hackathon Export"])
 
 # ============== SINGLE HACKATHON TAB ==============
 with tab1:
@@ -446,6 +447,211 @@ with tab2:
             st.error(f"❌ Error loading file: {e}")
             st.info("Make sure the file contains a column with hackathon URLs (e.g., 'Hackathon url' or similar)")
 
+# ============== AI HACKATHON EXPORT TAB ==============
+with tab3:
+    st.markdown("### Export AI/ML Hackathon Submissions")
+    st.markdown("""
+    Export submission data from all AI/ML hackathons in the built-in list.
+    This list contains **{:,}** hackathons focused on AI, ML, and related technologies.
+    """.format(sampler.get_ai_hackathons_count()))
+    
+    # Check if AI hackathons list exists
+    ai_hackathon_count = sampler.get_ai_hackathons_count()
+    
+    if ai_hackathon_count == 0:
+        st.warning("⚠️ No AI hackathons list found. Please ensure the ai_hackathons_list.xlsx file is in the data directory.")
+    else:
+        st.success(f"✅ Found {ai_hackathon_count:,} AI/ML hackathons in the built-in list")
+        
+        st.markdown("---")
+        
+        # Processing options
+        st.markdown("#### ⚙️ Export Options")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            ai_export_all = st.checkbox(
+                "Export All Data",
+                value=True,
+                help="Export all submissions instead of random samples",
+                key="ai_export_all"
+            )
+        
+        with col2:
+            ai_sample_size = st.number_input(
+                "Sample Size per Hackathon:",
+                min_value=1,
+                max_value=100,
+                value=30,
+                help="Number of random submissions to extract from each hackathon (ignored if 'Export All Data' is checked)",
+                key="ai_sample_size",
+                disabled=ai_export_all
+            )
+        
+        with col3:
+            ai_use_seed = st.checkbox(
+                "Use fixed random seed",
+                value=True,
+                help="Enable for reproducible results across all hackathons",
+                key="ai_use_seed",
+                disabled=ai_export_all
+            )
+        
+        with col4:
+            if ai_use_seed and not ai_export_all:
+                ai_random_seed = st.number_input(
+                    "Base Random Seed:",
+                    min_value=0,
+                    value=42,
+                    help="Each hackathon will use seed + index for reproducibility",
+                    key="ai_random_seed"
+                )
+            else:
+                ai_random_seed = None
+        
+        st.markdown("---")
+        
+        # Process button
+        ai_button_label = "📦 Export All AI Hackathon Submissions" if ai_export_all else "🚀 Process All AI Hackathons"
+        if st.button(ai_button_label, type="primary", key="ai_process"):
+            # Initialize progress tracking
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            results = []
+            
+            # Process AI hackathons
+            for result in sampler.batch_sample_ai_hackathons(
+                sample_size=ai_sample_size,
+                random_state=ai_random_seed,
+                export_all=ai_export_all
+            ):
+                results.append(result)
+                
+                # Update progress
+                progress = len(results) / ai_hackathon_count
+                progress_bar.progress(progress)
+                
+                status_icon = "✅" if result['status'] == 'success' else "❌"
+                status_text.text(f"Processing {len(results)}/{ai_hackathon_count}: {status_icon} {result['slug']}")
+            
+            progress_bar.progress(1.0)
+            status_text.text(f"✅ Completed processing {ai_hackathon_count} AI hackathons!")
+            
+            # Store results in session state
+            st.session_state['ai_batch_results'] = results
+            st.session_state['ai_batch_processed'] = True
+        
+        # Display results if they exist in session state
+        if st.session_state.get('ai_batch_results'):
+            results = st.session_state['ai_batch_results']
+            
+            st.markdown("---")
+            st.markdown("### 📊 Processing Results")
+            
+            success_count = sum(1 for r in results if r['status'] == 'success')
+            not_found_count = sum(1 for r in results if r['status'] == 'not_found')
+            total_samples = sum(r['sample_size'] for r in results)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total AI Hackathons", len(results))
+            
+            with col2:
+                st.metric("Found in Dataset", success_count)
+            
+            with col3:
+                st.metric("Not Found", not_found_count)
+            
+            with col4:
+                st.metric("Total Submissions", total_samples)
+            
+            # Show detailed results
+            st.markdown("#### 📋 Detailed Results")
+            
+            results_df = pd.DataFrame([{
+                'URL': r['url'],
+                'Hackathon': r['hackathon_name'] or 'N/A',
+                'Organization': r['organization'] or 'N/A',
+                'Total Submissions': r['total_submissions'],
+                'Exported': r['sample_size'],
+                'Bucket': r.get('submission_bucket', 'N/A'),
+                'Status': '✅ Success' if r['status'] == 'success' else '❌ Not Found'
+            } for r in results])
+            
+            st.dataframe(results_df, use_container_width=True, hide_index=True)
+            
+            st.markdown("---")
+            
+            # Export section
+            st.markdown("### 💾 Export All AI Hackathon Samples")
+            
+            # Generate the Excel file in memory
+            output_buffer = io.BytesIO()
+            
+            # Combine all samples into one DataFrame
+            all_samples = []
+            for r in results:
+                if r['status'] == 'success' and r['sample_df'] is not None:
+                    sample_df = r['sample_df'].copy()
+                    sample_df['Hackathon URL'] = r['url']
+                    sample_df['Hackathon Slug'] = r['slug']
+                    all_samples.append(sample_df)
+            
+            if all_samples:
+                combined_samples = pd.concat(all_samples, ignore_index=True)
+            else:
+                combined_samples = pd.DataFrame()
+            
+            # Create summary DataFrame
+            summary_df = pd.DataFrame([{
+                'Hackathon URL': r['url'],
+                'Hackathon Slug': r['slug'],
+                'Hackathon Name': r['hackathon_name'] or 'N/A',
+                'Organization': r['organization'] or 'N/A',
+                'Total Submissions': r['total_submissions'],
+                'Exported Count': r['sample_size'],
+                'Submission Bucket': r.get('submission_bucket', ''),
+                'Hackathon Year': r.get('hackathon_year', ''),
+                'Status': r['status'],
+                'Error': r.get('error', '')
+            } for r in results])
+            
+            # Create statistics DataFrame
+            stats_df = pd.DataFrame([{
+                'Total AI Hackathons Processed': len(results),
+                'Hackathons Found': success_count,
+                'Hackathons Not Found': not_found_count,
+                'Total Submissions Exported': total_samples
+            }])
+            
+            # Write to Excel buffer
+            with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
+                combined_samples.to_excel(writer, sheet_name='All AI Hackathon Samples', index=False)
+                summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                stats_df.to_excel(writer, sheet_name='Statistics', index=False)
+            
+            output_buffer.seek(0)
+            
+            # Provide direct download button
+            default_filename = f"ai_hackathon_submissions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            st.download_button(
+                label="📥 Download AI Hackathon Submissions (Excel)",
+                data=output_buffer,
+                file_name=default_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="ai_download"
+            )
+            
+            # Option to clear results and start fresh
+            if st.button("🔄 Clear Results & Start Over", key="clear_ai"):
+                del st.session_state['ai_batch_results']
+                if 'ai_batch_processed' in st.session_state:
+                    del st.session_state['ai_batch_processed']
+                st.rerun()
+
 st.markdown("---")
 
 # Hackathon browser section
@@ -499,6 +705,12 @@ with st.expander("ℹ️ About This Feature"):
     2. Check "Export All Data" to get all submissions, or set a sample size per hackathon
     3. Click the button to process all hackathons
     4. Export all samples to a single Excel file with summary sheets
+    
+    **AI Hackathon Export Mode:**
+    1. Uses the built-in list of AI/ML hackathons
+    2. Check "Export All Data" to get all submissions (default), or set a sample size
+    3. Click the button to process all AI hackathons
+    4. Exports include Organization Type and Organization Category from the AI hackathons list
     
     **Features:**
     - **Export All Data:** Option to export all submissions instead of random samples

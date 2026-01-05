@@ -20,9 +20,65 @@ class RandomSampler:
         (1, 'Bucket A (Micro)'),       # 1-9 submissions
     ]
     
+    # Columns to exclude from exports
+    EXCLUDED_COLUMNS = [
+        'Hackathon Description',
+        '_dedup_key',  # Internal deduplication key
+    ]
+    
+    # Path to AI hackathons list
+    AI_HACKATHONS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'ai_hackathons_list.xlsx')
+    
     def __init__(self, aggregator: DataAggregator = None):
         self.aggregator = aggregator if aggregator else DataAggregator()
         self.submissions_df = self.aggregator._get_submissions_df()
+        self._ai_hackathons_cache = None
+    
+    def get_ai_hackathons_list(self) -> List[str]:
+        """
+        Load the list of AI/ML hackathon URLs from the AI hackathons file.
+        
+        Returns:
+            List of hackathon URLs
+        """
+        if self._ai_hackathons_cache is not None:
+            return self._ai_hackathons_cache
+        
+        if not os.path.exists(self.AI_HACKATHONS_FILE):
+            return []
+        
+        try:
+            df = pd.read_excel(self.AI_HACKATHONS_FILE)
+            if 'Hackathon url' in df.columns:
+                urls = df['Hackathon url'].dropna().tolist()
+                self._ai_hackathons_cache = urls
+                return urls
+        except Exception as e:
+            print(f"Error loading AI hackathons list: {e}")
+        
+        return []
+    
+    def get_ai_hackathons_metadata(self) -> pd.DataFrame:
+        """
+        Load the AI hackathons metadata including Organization Type and Category.
+        
+        Returns:
+            DataFrame with hackathon metadata
+        """
+        if not os.path.exists(self.AI_HACKATHONS_FILE):
+            return pd.DataFrame()
+        
+        try:
+            df = pd.read_excel(self.AI_HACKATHONS_FILE)
+            # Keep relevant columns for merging
+            keep_cols = ['Hackathon url', 'Year', 'Organization Type', 'Organization Category', 
+                        'In person vs virtual', 'Hackathon Tags']
+            available_cols = [c for c in keep_cols if c in df.columns]
+            return df[available_cols]
+        except Exception as e:
+            print(f"Error loading AI hackathons metadata: {e}")
+        
+        return pd.DataFrame()
     
     @staticmethod
     def get_submission_bucket(submission_count: int) -> str:
@@ -231,20 +287,9 @@ class RandomSampler:
             'hackathon_year': hackathon_year
         }
         
-        # Select relevant columns for output
-        output_columns = [
-            'Project Title',
-            'Submission Url',
-            'Organization Name',
-            'Challenge Title',
-            'Project Created At',
-            'About The Project',
-            'Built With',
-            'Additional Team Member Count'
-        ]
-        
-        # Only include columns that exist
-        available_columns = [col for col in output_columns if col in sampled.columns]
+        # Include all columns except excluded ones
+        excluded_cols = self.EXCLUDED_COLUMNS + ['hackathon_slug']  # Also exclude internal slug column
+        available_columns = [col for col in sampled.columns if col not in excluded_cols]
         sampled = sampled[available_columns].reset_index(drop=True)
         
         # Add Year column extracted from Project Created At
@@ -256,6 +301,22 @@ class RandomSampler:
         
         # Add Hackathon Year column
         sampled['Hackathon Year'] = hackathon_info['hackathon_year']
+        
+        # Try to merge AI hackathon metadata if available
+        hackathon_url = hackathon_info.get('url')
+        if hackathon_url:
+            ai_metadata = self.get_ai_hackathons_metadata()
+            if not ai_metadata.empty and 'Hackathon url' in ai_metadata.columns:
+                matching_meta = ai_metadata[ai_metadata['Hackathon url'] == hackathon_url]
+                if not matching_meta.empty:
+                    meta_row = matching_meta.iloc[0]
+                    # Add metadata columns
+                    if 'Organization Type' in meta_row.index:
+                        sampled['Organization Type'] = meta_row['Organization Type']
+                    if 'Organization Category' in meta_row.index:
+                        sampled['Organization Category'] = meta_row['Organization Category']
+                    if 'In person vs virtual' in meta_row.index:
+                        sampled['In Person vs Virtual'] = meta_row['In person vs virtual']
         
         return sampled, hackathon_info
     
@@ -499,6 +560,44 @@ class RandomSampler:
             progress_callback=progress_callback,
             export_all=export_all
         )
+    
+    def batch_sample_ai_hackathons(
+        self,
+        sample_size: int = 30,
+        random_state: Optional[int] = None,
+        progress_callback: Optional[Callable[[int, int, str, str], None]] = None,
+        export_all: bool = False
+    ) -> Generator[Dict, None, None]:
+        """
+        Process all AI/ML hackathons from the built-in list and yield results.
+        
+        Args:
+            sample_size: Number of submissions to sample per hackathon (ignored if export_all=True)
+            random_state: Base random seed
+            progress_callback: Optional callback(current, total, url, status)
+            export_all: If True, return all submissions instead of a random sample
+        
+        Yields:
+            Dict with sample results for each hackathon
+        """
+        urls = self.get_ai_hackathons_list()
+        
+        yield from self.batch_sample(
+            urls,
+            sample_size=sample_size,
+            random_state=random_state,
+            progress_callback=progress_callback,
+            export_all=export_all
+        )
+    
+    def get_ai_hackathons_count(self) -> int:
+        """
+        Get the count of AI/ML hackathons in the built-in list.
+        
+        Returns:
+            Number of AI hackathons
+        """
+        return len(self.get_ai_hackathons_list())
     
     def export_batch_samples(
         self,
