@@ -31,8 +31,12 @@ class RandomSampler:
     
     def __init__(self, aggregator: DataAggregator = None):
         self.aggregator = aggregator if aggregator else DataAggregator()
-        self.submissions_df = self.aggregator._get_submissions_df()
         self._ai_hackathons_cache = None
+    
+    @property
+    def submissions_df(self):
+        """Lazily load submissions data on each access to ensure fresh data after ingest."""
+        return self.aggregator._get_submissions_df()
     
     def get_ai_hackathons_list(self) -> List[str]:
         """

@@ -91,7 +91,11 @@ if not data_available:
                         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                             zip_ref.extractall(extract_dir)
                         
-                        st.success("✅ Data loaded successfully! Please refresh the page.")
+                        # Clear the cache so the sampler reloads with new data
+                        get_aggregator.clear()
+                        get_sampler.clear()
+                        
+                        st.success("✅ Data loaded successfully! Reloading...")
                         st.rerun()
                 except subprocess.TimeoutExpired:
                     st.error("Download timed out. The file may be too large or the connection is slow.")
@@ -515,12 +519,19 @@ with tab3:
     This list contains **{:,}** hackathons focused on AI, ML, and related technologies.
     """.format(sampler.get_ai_hackathons_count()))
     
+    # Check if submission data is available
+    if not data_available:
+        st.error("⚠️ **No submission data loaded!** The AI Hackathon Export requires submission data to be loaded first.")
+        st.info("👉 Use the **Load Submission Data** section at the top of this page to load your submission data from Google Drive or navigate to the **Upload** page.")
+        st.markdown("---")
+        st.markdown("The AI hackathons list is ready, but without submission data, there's nothing to export.")
+    
     # Check if AI hackathons list exists
     ai_hackathon_count = sampler.get_ai_hackathons_count()
     
     if ai_hackathon_count == 0:
         st.warning("⚠️ No AI hackathons list found. Please ensure the ai_hackathons_list.xlsx file is in the data directory.")
-    else:
+    elif data_available:
         st.success(f"✅ Found {ai_hackathon_count:,} AI/ML hackathons in the built-in list")
         
         st.markdown("---")
